@@ -11,13 +11,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.15.0
 	github.com/docker/cli v20.10.17+incompatible
 	github.com/docker/distribution v2.8.1+incompatible
+	github.com/fsnotify/fsnotify v1.5.4
 	github.com/google/go-containerregistry v0.10.0
 	github.com/gorilla/mux v1.8.0
 	github.com/notaryproject/notation-go v0.8.0-alpha.1
 	github.com/open-policy-agent/frameworks/constraint v0.0.0-20220627162905-95c012350402
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20220114050600-8b9d41f48198
-	github.com/oras-project/artifacts-spec v1.0.0-rc.1
+	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/pkg/errors v0.9.1
 	github.com/sigstore/cosign v1.9.1-0.20220707171453-dad7d3f1892a
 	github.com/sigstore/sigstore v1.2.1-0.20220614141825-9c0e2e247545
@@ -71,7 +72,6 @@ require (
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
 	github.com/envoyproxy/go-control-plane v0.10.2-0.20220325020618-49ff273808a1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v0.6.2 // indirect
-	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fullstorydev/grpcurl v1.8.6 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
