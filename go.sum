@@ -281,8 +281,8 @@ github.com/aws/aws-sdk-go-v2/credentials v1.3.1/go.mod h1:r0n73xwsIVagq8RsxmZbGS
 github.com/aws/aws-sdk-go-v2/credentials v1.6.1/go.mod h1:QyvQk1IYTqBWSi1T6UgT/W8DMxBVa5pVuLFSRLLhGf8=
 github.com/aws/aws-sdk-go-v2/credentials v1.12.5/go.mod h1:DOcdLlkqUiNGyXnjWgspC3eIAdXhj8q0pO1LiSvrTI4=
 github.com/aws/aws-sdk-go-v2/credentials v1.12.9/go.mod h1:2Vavxl1qqQXJ8MUcQZTsIEW8cwenFCWYXtLRPba3L/o=
-github.com/aws/aws-sdk-go-v2/credentials v1.12.13 h1:cuPzIsjKAWBUAAk8ZUR2l02Sxafl9hiaMsc7tlnjwAY=
-github.com/aws/aws-sdk-go-v2/credentials v1.12.13/go.mod h1:9fDEemXizwXrxPU1MTzv69LP/9D8HVl5qHAQO9A9ikY=
+github.com/aws/aws-sdk-go-v2/credentials v1.12.14 h1:AtVG/amkjbDBfnPr/tuW2IG18HGNznP6L12Dx0rLz+Q=
+github.com/aws/aws-sdk-go-v2/credentials v1.12.14/go.mod h1:opAndTyq+YN7IpVG57z2CeNuXSQMqTYxGGlYH0m0RMY=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.3.0/go.mod h1:2LAuqPx1I6jNfaGDucWfA2zqQCYCOMCDHiCOciALyNw=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.8.0/go.mod h1:5E1J3/TTYy6z909QNR0QnXGBpfESYGDqd3O0zqONghU=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.6/go.mod h1:ClLMcuQA/wcHPmOIfNzNI4Y1Q0oDbmEkbYhMFOzHDh8=
@@ -331,8 +331,8 @@ github.com/aws/aws-sdk-go-v2/service/sso v1.3.1/go.mod h1:J3A3RGUvuCZjvSuZEcOpHD
 github.com/aws/aws-sdk-go-v2/service/sso v1.6.0/go.mod h1:Q/l0ON1annSU+mc0JybDy1Gy6dnJxIcWjphO6qJPzvM=
 github.com/aws/aws-sdk-go-v2/service/sso v1.11.8/go.mod h1:UqRD9bBt15P0ofRyDZX6CfsIqPpzeHOhZKWzgSuAzpo=
 github.com/aws/aws-sdk-go-v2/service/sso v1.11.12/go.mod h1:MO4qguFjs3wPGcCSpQ7kOFTwRvb+eu+fn+1vKleGHUk=
-github.com/aws/aws-sdk-go-v2/service/sso v1.11.16 h1:YK8L7TNlGwMWHYqLs+i6dlITpxqzq08FqQUy26nm+T8=
-github.com/aws/aws-sdk-go-v2/service/sso v1.11.16/go.mod h1:mS5xqLZc/6kc06IpXn5vRxdLaED+jEuaSRv5BxtnsiY=
+github.com/aws/aws-sdk-go-v2/service/sso v1.11.17 h1:pXxu9u2z1UqSbjO9YA8kmFJBhFc1EVTDaf7A+S+Ivq8=
+github.com/aws/aws-sdk-go-v2/service/sso v1.11.17/go.mod h1:mS5xqLZc/6kc06IpXn5vRxdLaED+jEuaSRv5BxtnsiY=
 github.com/aws/aws-sdk-go-v2/service/sts v1.6.0/go.mod h1:q7o0j7d7HrJk/vr9uUt3BVRASvcU7gYZB9PUgPiByXg=
 github.com/aws/aws-sdk-go-v2/service/sts v1.10.0/go.mod h1:jLKCFqS+1T4i7HDqCP9GM4Uk75YW1cS0o82LdxpMyOE=
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.7/go.mod h1:lVxTdiiSHY3jb1aeg+BBFtDzZGSUCv6qaNOyEGCJ1AY=
@@ -1647,9 +1647,6 @@ github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
 github.com/openzipkin/zipkin-go v0.2.2/go.mod h1:NaW6tEwdmWMaCDZzg8sh+IBNOxHMPnhQw8ySjnjRyN4=
 github.com/openzipkin/zipkin-go v0.3.0/go.mod h1:4c3sLeE8xjNqehmF5RpAFLPLJxXscc0R4l6Zg0P1tTQ=
-github.com/oras-project/artifacts-spec v1.0.0-draft.1.1/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
-github.com/oras-project/artifacts-spec v1.0.0-rc.1 h1:bCHf9mPbrgiNwQFyVzBX79BYZVAl0OUrmvICZOCOwts=
-github.com/oras-project/artifacts-spec v1.0.0-rc.1/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
 github.com/oras-project/artifacts-spec v1.0.0-rc.2 h1:9SMCNSxkJEHqWGDiMCuy6TXHgvjgwXGdXZZGXLKQvVE=
 github.com/oras-project/artifacts-spec v1.0.0-rc.2/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
 github.com/otiai10/copy v1.2.0/go.mod h1:rrF5dJ5F0t/EWSYODDu4j9/vEeYHMkc8jt0zJChqQWw=
@@ -3156,8 +3153,6 @@ mvdan.cc/unparam v0.0.0-20210104141923-aac4ce9116a7/go.mod h1:hBpJkZE8H/sb+VRFvw
 nhooyr.io/websocket v1.8.7/go.mod h1:B70DZP8IakI65RVQ51MsWP/8jndNma26DVA/nFSCgW0=
 oras.land/oras-go v1.2.0 h1:yoKosVIbsPoFMqAIFHTnrmOuafHal+J/r+I5bdbVWu4=
 oras.land/oras-go v1.2.0/go.mod h1:pFNs7oHp2dYsYMSS82HaX5l4mpnGO7hbpPN6EWH2ltc=
-oras.land/oras-go/v2 v2.0.0-20220630033939-f37492936f3e h1:qthvvepl0qYS9TPhSpXQvcT19npAtw0lHh76SFcyIvA=
-oras.land/oras-go/v2 v2.0.0-20220630033939-f37492936f3e/go.mod h1:0IQiLwHUJuMs0+QYGavaeQWw5FD4ABD/RP5YamXT/sc=
 oras.land/oras-go/v2 v2.0.0-rc.2 h1:dks9BxPg6HQOxn5+jVNuTFl45FuYvHfLQ6wcP7hVRdE=
 oras.land/oras-go/v2 v2.0.0-rc.2/go.mod h1:IZRIoIJqkAH6x0pL3tVnpyPUyZgthjSyPcH2kgJvBMo=
 pgregory.net/rapid v0.3.3/go.mod h1:UYpPVyjFHzYBGHIxLFoupi8vwk6rXNzRY9OMvVxFIOU=
