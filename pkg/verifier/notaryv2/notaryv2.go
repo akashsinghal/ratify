@@ -23,6 +23,7 @@ import (
 	"fmt"
 	paths "path/filepath"
 	"strings"
+	"time"
 
 	ratifyconfig "github.com/deislabs/ratify/config"
 	"github.com/deislabs/ratify/pkg/common"
@@ -112,11 +113,11 @@ func (v *notaryV2Verifier) Verify(ctx context.Context,
 	desc := oci.Descriptor{
 		Digest: subjectReference.Digest,
 	}
-
+	starttime := time.Now()
 	extensions := make(map[string]string)
 
 	referenceManifest, err := store.GetReferenceManifest(ctx, subjectReference, referenceDescriptor)
-
+	fmt.Printf("%v VERIFIER manifest fetch duration: %dms\n", time.Now().UTC(), time.Since(starttime).Milliseconds())
 	if err != nil {
 		return verifier.VerifierResult{IsSuccess: false}, err
 	}
@@ -126,6 +127,7 @@ func (v *notaryV2Verifier) Verify(ctx context.Context,
 		if err != nil {
 			return verifier.VerifierResult{IsSuccess: false}, err
 		}
+		fmt.Printf("%v VERIFIER blob %v fetch duration: %dms\n", time.Now().UTC(), blobDesc.Digest, time.Since(starttime).Milliseconds())
 
 		cert, err := getCert(refBlob)
 		if err != nil {

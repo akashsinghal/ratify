@@ -256,7 +256,10 @@ func (store *orasStore) GetReferenceManifest(ctx context.Context, subjectReferen
 
 	if !isCached {
 		// fetch manifest content from repository
+		starttime := time.Now()
+		fmt.Printf("%v ORAS fetch manifest start\n", time.Now().UTC())
 		manifestReader, err := repository.Fetch(ctx, referenceDesc.Descriptor)
+		fmt.Printf("%v ORAS fetch manifest duration: %d\n", time.Now().UTC(), time.Since(starttime).Milliseconds())
 		if err != nil {
 			store.evictAuthCache(subjectReference.Original, err)
 			return ocispecs.ReferenceManifest{}, err

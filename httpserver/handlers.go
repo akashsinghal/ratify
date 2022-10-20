@@ -39,7 +39,7 @@ func (server *Server) verify(ctx context.Context, w http.ResponseWriter, r *http
 	if err != nil {
 		return fmt.Errorf("unable to read request body: %v", err)
 	}
-
+	starttime := time.Now()
 	// parse request body
 	var providerRequest externaldata.ProviderRequest
 	err = json.Unmarshal(body, &providerRequest)
@@ -86,7 +86,7 @@ func (server *Server) verify(ctx context.Context, w http.ResponseWriter, r *http
 		}(utils.SanitizeString(subject))
 	}
 	wg.Wait()
-
+	fmt.Printf("time elapsed for all reqs: %d\n", time.Since(starttime).Milliseconds())
 	return sendResponse(&results, "", w, http.StatusOK)
 }
 
