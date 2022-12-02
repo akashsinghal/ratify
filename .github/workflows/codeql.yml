@@ -3,7 +3,7 @@ name: "CodeQL Scan"
 
 on:
   push:
-    branches: [main]
+    branches: [main, akashsinghal/fixCodequlVuln]
   pull_request:
     branches: [main]
   schedule:
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      contents: read
       security-events: write
 
     steps:

@@ -33,7 +33,7 @@ import (
 const apiVersion = "externaldata.gatekeeper.sh/v1alpha1"
 
 func (server *Server) verify(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-	logrus.Infof("start request %v %v", r.Method, r.URL)
+	logrus.Infof("start request %v %s", r.Method, utils.SanitizeURL(*r.URL))
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
