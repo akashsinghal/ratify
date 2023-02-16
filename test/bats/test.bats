@@ -68,7 +68,9 @@ SLEEP_TIME=1
     assert_success
 
     sed -i 's/useHttp: false/useHttp: true/' ./config/samples/config_v1alpha1_store_oras.yaml
+    sed -i 's/key:""/key: \/usr\/local\/ratify-certs\/cosign\/cosign.pub/g' ./config/samples/config_v1alpha1_verifier_cosign.yaml
     cat ./config/samples/config_v1alpha1_store_oras.yaml >&3
+    cat ./config/samples/config_v1alpha1_verifier_cosign.yaml >&3
     run kubectl apply -f ./config/samples/config_v1alpha1_store_oras.yaml
 }
 
