@@ -383,6 +383,7 @@ e2e-deploy-ratify: e2e-notaryv2-setup e2e-cosign-setup e2e-licensechecker-setup 
 	--set cosign.enabled=true \
 	--set cosign.key="$$(cat .staging/cosign/cosign.pub)" \
 	--set oras.useHttp=true \
+	--set logLevel=debug \
 	--set-file dockerConfig="mount_config.json"
 
 	rm mount_config.json
