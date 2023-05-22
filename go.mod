@@ -40,7 +40,7 @@ require (
 	golang.org/x/sync v0.1.0
 	google.golang.org/grpc v1.54.1
 	google.golang.org/protobuf v1.30.0
-	k8s.io/api v0.26.1
+	k8s.io/api v0.26.5
 	k8s.io/apimachinery v0.26.5
 	k8s.io/client-go v0.25.4
 	oras.land/oras-go/v2 v2.0.2
