@@ -27,6 +27,7 @@ import (
 	sf "github.com/deislabs/ratify/pkg/referrerstore/factory"
 	"github.com/deislabs/ratify/pkg/utils"
 	vf "github.com/deislabs/ratify/pkg/verifier/factory"
+	"github.com/opencontainers/go-digest"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +38,7 @@ const (
 type verifyCmdOptions struct {
 	configFilePath string
 	subject        string
+	digest         string
 	artifactTypes  []string
 	silentMode     bool
 }
@@ -57,6 +59,7 @@ func NewCmdVerify(argv ...string) *cobra.Command {
 	flags := cmd.Flags()
 
 	flags.StringVarP(&opts.subject, "subject", "s", "", "Subject Reference")
+	flags.StringVarP(&opts.digest, "digest", "d", "", "Subject Reference Digest")
 	flags.StringVarP(&opts.configFilePath, "config", "c", "", "Config File Path")
 	flags.StringArrayVarP(&opts.artifactTypes, "artifactType", "t", nil, "artifact type to filter")
 	flags.BoolVar(&opts.silentMode, "silent", false, "Silent output")
@@ -79,8 +82,17 @@ func verify(opts verifyCmdOptions) error {
 		return err
 	}
 
-	if subRef.Digest == "" {
+	if subRef.Digest == "" && opts.digest == "" {
 		fmt.Println(taggedReferenceWarning)
+	}
+
+	parsedDigest, err := digest.Parse(opts.digest)
+	if err != nil {
+		return err
+	}
+	digestedRef, err := utils.ParseSubjectReferenceWithDigest(opts.subject, parsedDigest)
+	if err == nil {
+		opts.subject = digestedRef
 	}
 
 	cf, err := config.Load(opts.configFilePath)

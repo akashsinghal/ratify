@@ -25,7 +25,7 @@
                 "name": "notaryv2",
                 "artifactTypes": "application/vnd.cncf.notary.signature",
                 "verificationCerts": [
-                    "/usr/local/ratify-certs/notary/truststore"
+                    "/home/devuser/code/ratify/notary.crt"
                 ],
                 "trustPolicyDoc": {
                     "version": "1.0",
@@ -47,18 +47,6 @@
                         }
                     ]
                 }
-            },
-            {
-                "name": "sbom",
-                "artifactTypes": "org.example.sbom.v0",
-                "nestedReferences": "application/vnd.cncf.notary.signature"
-            },
-            {
-                "name": "licensechecker",
-                "artifactTypes": "application/vnd.ratify.spdx.v0",
-                "allowedLicenses": [
-                    "MIT"
-                ]
             }
         ]
     }
