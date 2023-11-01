@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ratify-azure-blob
+  annotations:
+    volume.beta.kubernetes.io/storage-class: azureblob-nfs-premium
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "1"
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: azureblob-nfs-premium
+  resources:
+    requests:
+      storage: 5Gi

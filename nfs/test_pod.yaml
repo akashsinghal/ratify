@@ -1,0 +1,23 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mypod
+  namespace: gatekeeper-system
+spec:
+  containers:
+  - name: mypod
+    image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    volumeMounts:
+    - mountPath: /mnt/blob
+      name: volume
+  volumes:
+    - name: volume
+      persistentVolumeClaim:
+        claimName: ratify-azure-blob
