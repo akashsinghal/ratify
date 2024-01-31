@@ -223,7 +223,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     }
 
     # save the existing key management system inline resource to restore later
-    run bash -c "kubectl get certificatestores.config.ratify.deislabs.io/ratify-notation-inline-cert-0 -n ${RATIFY_NAMESPACE} -o yaml > kms_staging.yaml"
+    run bash -c "kubectl get keymanagementsystems.config.ratify.deislabs.io/ratify-notation-inline-cert-0 -n ${RATIFY_NAMESPACE} -o yaml > kms_staging.yaml"
     assert_success
     # configure the default template/constraint
     run kubectl apply -f ./library/default/template.yaml
