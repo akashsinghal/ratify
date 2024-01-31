@@ -1,0 +1,12 @@
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: KeyManagementSystem
+metadata:
+  labels:
+    app.kubernetes.io/name: keymanagementsystem
+    app.kubernetes.io/instance: keymanagementsystem-sample
+    app.kubernetes.io/part-of: ratify
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: ratify
+  name: keymanagementsystem-sample
+spec:
+  # TODO(user): Add fields here

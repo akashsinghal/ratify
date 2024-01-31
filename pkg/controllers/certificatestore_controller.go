@@ -45,8 +45,6 @@ var (
 	certificatesMap = map[string][]*x509.Certificate{}
 )
 
-const maxBriefErrLength = 30
-
 //+kubebuilder:rbac:groups=config.ratify.deislabs.io,resources=certificatestores,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=config.ratify.deislabs.io,resources=certificatestores/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=config.ratify.deislabs.io,resources=certificatestores/finalizers,verbs=update
@@ -78,10 +76,25 @@ func (r *CertificateStoreReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// get cert provider attributes
-	attributes, err := getCertStoreConfig(certStore.Spec)
 	lastFetchedTime := metav1.Now()
 	isFetchSuccessful := false
+
+	// ensure that certificate store and key management system are not configured together
+	var keyManagementSystemList configv1beta1.KeyManagementSystemList
+	if err := r.List(ctx, &keyManagementSystemList); err != nil {
+		logger.Error(err, "unable to list key management systems")
+		return ctrl.Result{}, err
+	}
+
+	if len(keyManagementSystemList.Items) > 0 {
+		err := fmt.Errorf("key management system already exists: key management system and certificate store cannot be configured together")
+		logger.Error(err)
+		writeCertStoreStatus(ctx, r, certStore, logger, isFetchSuccessful, err.Error(), lastFetchedTime, nil)
+		return ctrl.Result{}, err
+	}
+
+	// get cert provider attributes
+	attributes, err := getCertStoreConfig(certStore.Spec)
 
 	if err != nil {
 		writeCertStoreStatus(ctx, r, certStore, logger, isFetchSuccessful, err.Error(), lastFetchedTime, nil)
