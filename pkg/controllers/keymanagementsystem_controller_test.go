@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	configv1beta1 "github.com/deislabs/ratify/api/v1beta1"
-	"github.com/deislabs/ratify/pkg/certificateprovider"
+	"github.com/deislabs/ratify/pkg/keymanagementsystem"
 	"github.com/deislabs/ratify/pkg/keymanagementsystem/config"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,70 +31,70 @@ import (
 // TestUpdateErrorStatus tests the updateErrorStatus method
 func TestKMSUpdateErrorStatus(t *testing.T) {
 	var parametersString = "{\"certs\":{\"name\":\"certName\"}}"
-	var certStatus = []byte(parametersString)
+	var kmsStatus = []byte(parametersString)
 
-	status := configv1beta1.CertificateStoreStatus{
+	status := configv1beta1.KeyManagementSystemStatus{
 		IsSuccess: true,
 		Properties: runtime.RawExtension{
-			Raw: certStatus,
+			Raw: kmsStatus,
 		},
 	}
-	certStore := configv1beta1.CertificateStore{
+	keyManagementSystem := configv1beta1.KeyManagementSystem{
 		Status: status,
 	}
 	expectedErr := "it's a long error from unit test"
 	lastFetchedTime := metav1.Now()
-	updateErrorStatus(&certStore, expectedErr, &lastFetchedTime)
+	updateKMSErrorStatus(&keyManagementSystem, expectedErr, &lastFetchedTime)
 
-	if certStore.Status.IsSuccess != false {
-		t.Fatalf("Unexpected error, expected isSuccess to be false , actual %+v", certStore.Status.IsSuccess)
+	if keyManagementSystem.Status.IsSuccess != false {
+		t.Fatalf("Unexpected error, expected isSuccess to be false , actual %+v", keyManagementSystem.Status.IsSuccess)
 	}
 
-	if certStore.Status.Error != expectedErr {
-		t.Fatalf("Unexpected error string, expected %+v, got %+v", expectedErr, certStore.Status.Error)
+	if keyManagementSystem.Status.Error != expectedErr {
+		t.Fatalf("Unexpected error string, expected %+v, got %+v", expectedErr, keyManagementSystem.Status.Error)
 	}
 	expectedBriedErr := fmt.Sprintf("%s...", expectedErr[:30])
-	if certStore.Status.BriefError != expectedBriedErr {
-		t.Fatalf("Unexpected error string, expected %+v, got %+v", expectedBriedErr, certStore.Status.Error)
+	if keyManagementSystem.Status.BriefError != expectedBriedErr {
+		t.Fatalf("Unexpected error string, expected %+v, got %+v", expectedBriedErr, keyManagementSystem.Status.Error)
 	}
 
 	//make sure properties of last cached cert was not overridden
-	if len(certStore.Status.Properties.Raw) == 0 {
-		t.Fatalf("Unexpected properties,  expected %+v, got %+v", parametersString, string(certStore.Status.Properties.Raw))
+	if len(keyManagementSystem.Status.Properties.Raw) == 0 {
+		t.Fatalf("Unexpected properties,  expected %+v, got %+v", parametersString, string(keyManagementSystem.Status.Properties.Raw))
 	}
 }
 
 // TestKMSUpdateSuccessStatus tests the updateSuccessStatus method
 func TestKMSUpdateSuccessStatus(t *testing.T) {
-	certStatus := certificateprovider.CertificatesStatus{}
+	kmsStatus := keymanagementsystem.KeyManagementSystemStatus{}
 	properties := map[string]string{}
 	properties["CertName"] = "wabbit"
 	properties["Version"] = "ABC"
 
-	certStatus["Certificates"] = properties
+	kmsStatus["Certificates"] = properties
 
 	lastFetchedTime := metav1.Now()
 
-	status := configv1beta1.CertificateStoreStatus{
+	status := configv1beta1.KeyManagementSystemStatus{
 		IsSuccess: false,
 		Error:     "error from last operation",
 	}
-	certStore := configv1beta1.CertificateStore{
+	keyManagementSystem := configv1beta1.KeyManagementSystem{
 		Status: status,
 	}
 
-	updateSuccessStatus(&certStore, &lastFetchedTime, certStatus)
+	updateKMSSuccessStatus(&keyManagementSystem, &lastFetchedTime, kmsStatus)
 
-	if certStore.Status.IsSuccess != true {
-		t.Fatalf("Expected isSuccess to be true , actual %+v", certStore.Status.IsSuccess)
+	if keyManagementSystem.Status.IsSuccess != true {
+		t.Fatalf("Expected isSuccess to be true , actual %+v", keyManagementSystem.Status.IsSuccess)
 	}
 
-	if certStore.Status.Error != "" {
-		t.Fatalf("Unexpected error string, actual %+v", certStore.Status.Error)
+	if keyManagementSystem.Status.Error != "" {
+		t.Fatalf("Unexpected error string, actual %+v", keyManagementSystem.Status.Error)
 	}
 
 	//make sure properties of last cached cert was updated
-	if len(certStore.Status.Properties.Raw) == 0 {
+	if len(keyManagementSystem.Status.Properties.Raw) == 0 {
 		t.Fatalf("Properties should not be empty")
 	}
 }
@@ -102,32 +102,32 @@ func TestKMSUpdateSuccessStatus(t *testing.T) {
 // TestKMSUpdateSuccessStatus tests the updateSuccessStatus method with empty properties
 func TestKMSUpdateSuccessStatus_emptyProperties(t *testing.T) {
 	lastFetchedTime := metav1.Now()
-	status := configv1beta1.CertificateStoreStatus{
+	status := configv1beta1.KeyManagementSystemStatus{
 		IsSuccess: false,
 		Error:     "error from last operation",
 	}
-	certStore := configv1beta1.CertificateStore{
+	keyManagementSystem := configv1beta1.KeyManagementSystem{
 		Status: status,
 	}
 
-	updateSuccessStatus(&certStore, &lastFetchedTime, nil)
+	updateKMSSuccessStatus(&keyManagementSystem, &lastFetchedTime, nil)
 
-	if certStore.Status.IsSuccess != true {
-		t.Fatalf("Expected isSuccess to be true , actual %+v", certStore.Status.IsSuccess)
+	if keyManagementSystem.Status.IsSuccess != true {
+		t.Fatalf("Expected isSuccess to be true , actual %+v", keyManagementSystem.Status.IsSuccess)
 	}
 
-	if certStore.Status.Error != "" {
-		t.Fatalf("Unexpected error string, actual %+v", certStore.Status.Error)
+	if keyManagementSystem.Status.Error != "" {
+		t.Fatalf("Unexpected error string, actual %+v", keyManagementSystem.Status.Error)
 	}
 
 	//make sure properties of last cached cert was updated
-	if len(certStore.Status.Properties.Raw) != 0 {
+	if len(keyManagementSystem.Status.Properties.Raw) != 0 {
 		t.Fatalf("Properties should be empty")
 	}
 }
 
-// TestRawToCertificateStoreConfig tests the rawToCertificateStoreConfig method
-func TestRawToCertificateStoreConfig(t *testing.T) {
+// TestRawToKeyManagementSystemConfig tests the rawToKeyManagementSystemConfig method
+func TestRawToKeyManagementSystemConfig(t *testing.T) {
 	testCases := []struct {
 		name         string
 		raw          []byte
