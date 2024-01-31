@@ -123,7 +123,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     # apply the key management system to default namespace
     run bash -c "kubectl get keymanagementsystems.config.ratify.deislabs.io/ratify-notation-inline-cert-0 -o yaml -n ${RATIFY_NAMESPACE} > kms.yaml"    
     assert_success
-    sed 's/gatekeeper-system/default/' certStore.yaml > kmsNewNS.yaml    
+    sed 's/gatekeeper-system/default/' kms.yaml > kmsNewNS.yaml    
     run kubectl apply -f kmsNewNS.yaml
     assert_success
     run kubectl delete keymanagementsystems.config.ratify.deislabs.io/ratify-notation-inline-cert-0 -n ${RATIFY_NAMESPACE}
