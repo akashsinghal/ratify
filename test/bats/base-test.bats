@@ -232,6 +232,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     assert_success
 
     # verify that the image cannot be run due to an invalid cert
+    sleep 10
     run kubectl run demo-alternate --namespace default --image=registry:5000/notation:signed-alternate
     assert_failure
 
