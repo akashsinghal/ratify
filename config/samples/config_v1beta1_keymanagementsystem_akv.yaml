@@ -1,0 +1,13 @@
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: KeyManagementSystem
+metadata:
+  name: keymanagementsystem-inline
+spec:
+  type: azurekeyvault
+  parameters:
+    vaultURI: https://yourkeyvault.vault.azure.net/
+    certificates:
+      - certificateName: yourCertName
+        certificateVersion: yourCertVersion # Optional, fetch latest version if empty 
+    tenantID:
+    clientID: 
