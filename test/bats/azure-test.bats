@@ -250,7 +250,7 @@ SLEEP_TIME=1
     assert_failure
 
     echo "Add notation verifier and validate deployment succeeds"
-    run kubectl apply -f ./config/samples/config_v1beta1_verifier_notation_certstore.yaml
+    run kubectl apply -f ./config/samples/config_v1beta1_verifier_notation_kms.yaml
     assert_success
 
     # wait for the httpserver cache to be invalidated
@@ -304,7 +304,7 @@ SLEEP_TIME=1
 @test "validate mutation tag to digest" {
     teardown() {
         echo "cleaning up"
-        wait_for_process ${WAIT_TIME} ${SLEEP_TIME} 'kubectl delete pod mutate-demo --namespace default'
+        wait_for_process ${WAIT_TIME} ${SLEEP_TIME} 'kubectl delete pod mutate-demo --namespace default --ignore-not-found=true'
     }
     run kubectl apply -f ./library/default/template.yaml
     assert_success
