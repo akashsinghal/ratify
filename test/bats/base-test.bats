@@ -279,7 +279,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     cat ~/.config/notation/truststore/x509/ca/alternate-cert/alternate-cert.crt | sed 's/^/      /g' >>./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml
     run kubectl apply -f ./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml --namespace ${RATIFY_NAMESPACE}
     assert_success
-    sed -i '9,$d' ./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml
+    sed -i '10,$d' ./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml
 
     # configure the notation verifier to use the inline key management system
     run kubectl apply -f ./test/bats/tests/config/config_v1beta1_verifier_notation_kms.yaml
