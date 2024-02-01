@@ -338,7 +338,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     sed -i '10,$d' ./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml
 
     # configure the notation verifier to use the inline key management system
-    run kubectl apply -f ./test/bats/tests/config/config_v1beta1_verifier_notation.yaml
+    run kubectl apply -f ./test/bats/tests/config/config_v1beta1_verifier_notation_kms.yaml
     assert_success
 
     # verify that the image can be run with a root cert
