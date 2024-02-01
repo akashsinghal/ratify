@@ -273,6 +273,7 @@ RATIFY_NAMESPACE=gatekeeper-system
     sleep 10
     run kubectl run demo-alternate --namespace default --image=registry:5000/notation:signed-alternate
     assert_failure
+    sleep 10
 
     # add the alternate certificate as an inline key management system
     cat ~/.config/notation/truststore/x509/ca/alternate-cert/alternate-cert.crt | sed 's/^/      /g' >>./test/bats/tests/config/config_v1beta1_keymanagementsystem_inline.yaml
