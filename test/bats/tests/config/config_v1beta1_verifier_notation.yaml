@@ -8,7 +8,7 @@ spec:
   parameters:
     verificationCertStores:
       certs:
-        - certstore-inline
+        - keymanagementsystem-inline
     trustPolicyDoc:
       version: "1.0"
       trustPolicies:
