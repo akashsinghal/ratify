@@ -12,17 +12,17 @@ spec:
     vaultURI: {{ required "vaultURI must be provided when AKV cert config is enabled" .Values.akvCertConfig.vaultURI  }}
     certificates:
       {{- if .Values.akvCertConfig.cert1Name }}
-      - certificateName: {{ .Values.akvCertConfig.cert1Name  }}
-        certificateVersion: {{ .Values.akvCertConfig.cert1Version  }}
+      - name: {{ .Values.akvCertConfig.cert1Name  }}
+        version: {{ .Values.akvCertConfig.cert1Version  }}
       {{ end }}    
       {{- if .Values.akvCertConfig.cert2Name }}
-      - certificateName: {{ .Values.akvCertConfig.cert2Name  }}
-        certificateVersion: {{ .Values.akvCertConfig.cert2Version  }}        
+      - name: {{ .Values.akvCertConfig.cert2Name  }}
+        version: {{ .Values.akvCertConfig.cert2Version  }}        
       {{ end }}
       {{-  range .Values.akvCertConfig.certificates }}
-      {{- if .certificateName }}
-      - certificateName: {{ .certificateName  }}
-        certificateVersion: {{ .certificateVersion  }}
+      {{- if .name }}
+      - name: {{ .name  }}
+        version: {{ .version  }}
       {{- end }}
       {{- end }}
     tenantID: {{ required "tenantID must be provided when AKV cert config is enabled" .Values.akvCertConfig.tenantId  }}    

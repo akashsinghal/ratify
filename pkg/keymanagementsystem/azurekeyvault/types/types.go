@@ -20,7 +20,7 @@ const (
 	// key of the certificate status property
 	CertificatesStatus = "Certificates"
 	// Static string for certificate name for the certificate status property
-	CertificateName = "CertificateName"
+	CertificateName = "Name"
 	// Certificate version string for the certificate status property
 	CertificateVersion = "Version"
 	// Last refreshed string for the certificate status property
@@ -30,7 +30,7 @@ const (
 // KeyVaultCertificate holds keyvault certificate related config
 type KeyVaultCertificate struct {
 	// the name of the Azure Key Vault certificate
-	CertificateName string `json:"certificateName" yaml:"certificateName"`
+	Name string `json:"name" yaml:"name"`
 	// the version of the Azure Key Vault certificate
-	CertificateVersion string `json:"certificateVersion" yaml:"certificateVersion"`
+	Version string `json:"version" yaml:"version"`
 }

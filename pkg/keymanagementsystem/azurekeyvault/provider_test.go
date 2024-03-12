@@ -63,23 +63,23 @@ func TestFormatKeyVaultCertificate(t *testing.T) {
 		{
 			desc: "leading and trailing whitespace trimmed from all fields",
 			keyVaultObject: types.KeyVaultCertificate{
-				CertificateName:    "cert1     ",
-				CertificateVersion: "",
+				Name:    "cert1     ",
+				Version: "",
 			},
 			expectedKeyVaultObject: types.KeyVaultCertificate{
-				CertificateName:    "cert1",
-				CertificateVersion: "",
+				Name:    "cert1",
+				Version: "",
 			},
 		},
 		{
 			desc: "no data loss for already sanitized object",
 			keyVaultObject: types.KeyVaultCertificate{
-				CertificateName:    "cert1",
-				CertificateVersion: "version1",
+				Name:    "cert1",
+				Version: "version1",
 			},
 			expectedKeyVaultObject: types.KeyVaultCertificate{
-				CertificateName:    "cert1",
-				CertificateVersion: "version1",
+				Name:    "cert1",
+				Version: "version1",
 			},
 		},
 	}
@@ -128,7 +128,7 @@ func TestCreate(t *testing.T) {
 				"clientID": "clientid",
 				"certificates": []map[string]interface{}{
 					{
-						"certificateName": "cert1",
+						"name": "cert1",
 					},
 				},
 			},
@@ -190,7 +190,7 @@ func TestCreate(t *testing.T) {
 				"clientID": "clientid",
 				"certificates": []map[string]interface{}{
 					{
-						"certificateName":    "",
+						"name":               "",
 						"certificateVersion": "version1",
 					},
 				},
@@ -217,7 +217,7 @@ func TestGetCertificates(t *testing.T) {
 		"clientID": "clientid",
 		"certificates": []map[string]interface{}{
 			{
-				"certificateName":    "cert1",
+				"name":               "cert1",
 				"certificateVersion": "",
 			},
 		},

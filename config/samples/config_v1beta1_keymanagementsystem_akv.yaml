@@ -7,7 +7,7 @@ spec:
   parameters:
     vaultURI: https://yourkeyvault.vault.azure.net/
     certificates:
-      - certificateName: yourCertName
-        certificateVersion: yourCertVersion # Optional, fetch latest version if empty 
+      - name: yourCertName
+        version: yourCertVersion # Optional, fetch latest version if empty 
     tenantID:
     clientID: 

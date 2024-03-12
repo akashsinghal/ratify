@@ -127,24 +127,24 @@ func (s *akvKMSProvider) GetCertificates(ctx context.Context) ([]*x509.Certifica
 	certs := []*x509.Certificate{}
 	certsStatus := []map[string]string{}
 	for _, keyVaultCert := range s.certificates {
-		logger.GetLogger(ctx, logOpt).Debugf("fetching secret from key vault, certName %v,  keyvault %v", keyVaultCert.CertificateName, s.vaultURI)
+		logger.GetLogger(ctx, logOpt).Debugf("fetching secret from key vault, certName %v,  keyvault %v", keyVaultCert.Name, s.vaultURI)
 
 		// fetch the object from Key Vault
 		// GetSecret is required so we can fetch the entire cert chain. See issue https://github.com/deislabs/ratify/issues/695 for details
 		startTime := time.Now()
-		secretBundle, err := kvClient.GetSecret(ctx, s.vaultURI, keyVaultCert.CertificateName, keyVaultCert.CertificateVersion)
+		secretBundle, err := kvClient.GetSecret(ctx, s.vaultURI, keyVaultCert.Name, keyVaultCert.Version)
 
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get secret objectName:%s, objectVersion:%s, error: %w", keyVaultCert.CertificateName, keyVaultCert.CertificateVersion, err)
+			return nil, nil, fmt.Errorf("failed to get secret objectName:%s, objectVersion:%s, error: %w", keyVaultCert.Name, keyVaultCert.Version, err)
 		}
 
-		certResult, certProperty, err := getCertsFromSecretBundle(ctx, secretBundle, keyVaultCert.CertificateName)
+		certResult, certProperty, err := getCertsFromSecretBundle(ctx, secretBundle, keyVaultCert.Name)
 
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get certificates from secret bundle:%w", err)
 		}
 
-		metrics.ReportAKVCertificateDuration(ctx, time.Since(startTime).Milliseconds(), keyVaultCert.CertificateName)
+		metrics.ReportAKVCertificateDuration(ctx, time.Since(startTime).Milliseconds(), keyVaultCert.Name)
 		certs = append(certs, certResult...)
 		certsStatus = append(certsStatus, certProperty...)
 	}
@@ -313,7 +313,7 @@ func (s *akvKMSProvider) validate() error {
 	for i := range s.certificates {
 		// remove whitespace from all fields in key vault cert
 		formatKeyVaultCertificate(&s.certificates[i])
-		if s.certificates[i].CertificateName == "" {
+		if s.certificates[i].Name == "" {
 			return re.ErrorCodeConfigInvalid.NewError(re.CertProvider, providerName, re.EmptyLink, nil, fmt.Sprintf("certificate name is not set for certificate %d", i), re.HideStackTrace)
 		}
 	}
