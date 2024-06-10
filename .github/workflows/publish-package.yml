@@ -20,7 +20,7 @@ jobs:
         AZURE_CLIENT_ID: 814e6e97-120c-4534-b8a9-f1645bc99500
         AZURE_TENANT_ID: 72f988bf-86f1-41af-91ab-2d7cd011db47
         AZURE_KV_KEY_ID: https://ratify-persistent.vault.azure.net/keys/ratify-sign/4919e2153037437490a14520d1638e3f
-        AZURE_KV_CHECKSUM: 06bb5198af31ce11b08c4557ae4c2cbfb09878dfa6b637b7407ebc2d57b87b34
+        AZURE_KV_CHECKSUM: 06bb5198af31ce11b08c4557ae4c2cbfb09878dfa6b637b7407ebc2d57b87b34 # NOTE: this checksum must match release version of the plugin
         AZURE_KV_PLUGIN_URL: https://github.com/Azure/notation-azure-kv/releases/download/v1.2.0/notation-azure-kv_1.2.0_linux_amd64.tar.gz
     steps:
       - name: Checkout
