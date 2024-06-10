@@ -79,34 +79,6 @@ jobs:
             -t ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }} \
             -t ${{ steps.prepare.outputs.crdref }} \
             --push ./charts/ratify/crds
-      - name: docker build ratify base
-        run: |
-          docker buildx create --use         
-          docker buildx build -f ./httpserver/Dockerfile \
-            --attest type=sbom \
-            --attest type=provenance,mode=max \
-            --platform linux/amd64,linux/arm64,linux/arm/v7 \
-            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
-            --label org.opencontainers.image.revision=${{ github.sha }} \
-            -t ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }} \
-            -t ${{ steps.prepare.outputs.baseref }} \
-            --push .
-      - name: docker build ratify with plugin
-        run: |
-          docker buildx create --use
-          docker buildx build -f ./httpserver/Dockerfile \
-            --attest type=sbom \
-            --attest type=provenance,mode=max \
-            --platform linux/amd64,linux/arm64,linux/arm/v7 \
-            --build-arg build_sbom=true \
-            --build-arg build_licensechecker=true \
-            --build-arg build_schemavalidator=true \
-            --build-arg build_vulnerabilityreport=true \
-            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
-            --label org.opencontainers.image.revision=${{ github.sha }} \
-            -t ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }} \
-            -t ${{ steps.prepare.outputs.ref }} \
-            --push .
       - name: Sign with Notation - CRD image
         uses: notaryproject/notation-action/sign@v1
         with:
@@ -116,42 +88,82 @@ jobs:
           key_id: ${{ env.AZURE_KV_KEY_ID }}
           target_artifact_reference: ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
           signature_format: cose
-      - name: Sign with Notation - base image
-        uses: notaryproject/notation-action/sign@v1
-        with:
-          plugin_name: azure-kv
-          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-          key_id: ${{ env.AZURE_KV_KEY_ID }}
-          target_artifact_reference: ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
-          signature_format: cose
-      - name: Sign with Notation - full image
-        uses: notaryproject/notation-action/sign@v1
-        with:
-          plugin_name: azure-kv
-          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-          key_id: ${{ env.AZURE_KV_KEY_ID }}
-          target_artifact_reference: ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
-          signature_format: cose
       - name: Sign with Cosign
         run: |
           cosign sign --yes ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
-          cosign sign --yes ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
-          cosign sign --yes ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
-      - name: replace version
-        run: |
-          sed -i '/^  repository:/c\  repository: ghcr.io/ratify-project/ratify-dev' charts/ratify/values.yaml
-          sed -i '/^  crdRepository:/c\  crdRepository: ghcr.io/ratify-project/ratify-crds-dev' charts/ratify/values.yaml
-          sed -i '/^  tag:/c\  tag: ${{ steps.prepare.outputs.version }}' charts/ratify/values.yaml 
-      - name: helm package
-        run: |
-            helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversion }}
-            helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversionrolling }}
-      - name: helm push
-        run: |
-          helm push ratify-${{ steps.prepare.outputs.semversion }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
-          helm push ratify-${{ steps.prepare.outputs.semversionrolling }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
+      # - name: docker build ratify base
+      #   run: |
+      #     docker buildx create --use         
+      #     docker buildx build -f ./httpserver/Dockerfile \
+      #       --attest type=sbom \
+      #       --attest type=provenance,mode=max \
+      #       --platform linux/amd64,linux/arm64,linux/arm/v7 \
+      #       --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+      #       --label org.opencontainers.image.revision=${{ github.sha }} \
+      #       -t ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }} \
+      #       -t ${{ steps.prepare.outputs.baseref }} \
+      #       --push .
+      # - name: docker build ratify with plugin
+      #   run: |
+      #     docker buildx create --use
+      #     docker buildx build -f ./httpserver/Dockerfile \
+      #       --attest type=sbom \
+      #       --attest type=provenance,mode=max \
+      #       --platform linux/amd64,linux/arm64,linux/arm/v7 \
+      #       --build-arg build_sbom=true \
+      #       --build-arg build_licensechecker=true \
+      #       --build-arg build_schemavalidator=true \
+      #       --build-arg build_vulnerabilityreport=true \
+      #       --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+      #       --label org.opencontainers.image.revision=${{ github.sha }} \
+      #       -t ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }} \
+      #       -t ${{ steps.prepare.outputs.ref }} \
+      #       --push .
+      # - name: Sign with Notation - CRD image
+      #   uses: notaryproject/notation-action/sign@v1
+      #   with:
+      #     plugin_name: azure-kv
+      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
+      #     target_artifact_reference: ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+      #     signature_format: cose
+      # - name: Sign with Notation - base image
+      #   uses: notaryproject/notation-action/sign@v1
+      #   with:
+      #     plugin_name: azure-kv
+      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
+      #     target_artifact_reference: ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+      #     signature_format: cose
+      # - name: Sign with Notation - full image
+      #   uses: notaryproject/notation-action/sign@v1
+      #   with:
+      #     plugin_name: azure-kv
+      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
+      #     target_artifact_reference: ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+      #     signature_format: cose
+      # - name: Sign with Cosign
+      #   run: |
+      #     cosign sign --yes ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+      #     cosign sign --yes ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+      #     cosign sign --yes ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+      # - name: replace version
+      #   run: |
+      #     sed -i '/^  repository:/c\  repository: ghcr.io/ratify-project/ratify-dev' charts/ratify/values.yaml
+      #     sed -i '/^  crdRepository:/c\  crdRepository: ghcr.io/ratify-project/ratify-crds-dev' charts/ratify/values.yaml
+      #     sed -i '/^  tag:/c\  tag: ${{ steps.prepare.outputs.version }}' charts/ratify/values.yaml 
+      # - name: helm package
+      #   run: |
+      #       helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversion }}
+      #       helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversionrolling }}
+      # - name: helm push
+      #   run: |
+      #     helm push ratify-${{ steps.prepare.outputs.semversion }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
+      #     helm push ratify-${{ steps.prepare.outputs.semversionrolling }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
       - name: clear
         if: always()
         run: |

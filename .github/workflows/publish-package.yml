@@ -85,67 +85,64 @@ jobs:
           key_id: ${{ env.AZURE_KV_KEY_ID }}
           target_artifact_reference: ${{ steps.prepare.outputs.crdref }}
           signature_format: cose
+      - name: docker build ratify base
+        run: |
+          docker buildx create --use         
+          docker buildx build -f ./httpserver/Dockerfile \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
+            --platform linux/amd64,linux/arm64,linux/arm/v7 \
+            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            -t ${{ steps.prepare.outputs.baseref }} \
+            --push .
+      - name: docker build ratify with plugin
+        run: |
+          docker buildx create --use
+          docker buildx build -f ./httpserver/Dockerfile \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
+            --platform linux/amd64,linux/arm64,linux/arm/v7 \
+            --build-arg build_sbom=true \
+            --build-arg build_licensechecker=true \
+            --build-arg build_schemavalidator=true \
+            --build-arg build_vulnerabilityreport=true \
+            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            -t ${{ steps.prepare.outputs.ref }} \
+            --push .
+      - name: Sign with Notation - CRD image
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+          key_id: ${{ env.AZURE_KV_KEY_ID }}
+          target_artifact_reference: ${{ steps.prepare.outputs.crdref }}
+          signature_format: cose
+      - name: Sign with Notation - base image
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+          key_id: ${{ env.AZURE_KV_KEY_ID }}
+          target_artifact_reference: ${{ steps.prepare.outputs.baseref }}
+          signature_format: cose
+      - name: Sign with Notation - full image
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+          key_id: ${{ env.AZURE_KV_KEY_ID }}
+          target_artifact_reference: ${{ steps.prepare.outputs.ref }}
+          signature_format: cose
       - name: Sign with Cosign
         run: |
           cosign sign --yes ${{ steps.prepare.outputs.crdref }}
-      # - name: docker build ratify base
-      #   run: |
-      #     docker buildx create --use         
-      #     docker buildx build -f ./httpserver/Dockerfile \
-      #       --attest type=sbom \
-      #       --attest type=provenance,mode=max \
-      #       --platform linux/amd64,linux/arm64,linux/arm/v7 \
-      #       --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
-      #       --label org.opencontainers.image.revision=${{ github.sha }} \
-      #       -t ${{ steps.prepare.outputs.baseref }} \
-      #       --push .
-      # - name: docker build ratify with plugin
-      #   run: |
-      #     docker buildx create --use
-      #     docker buildx build -f ./httpserver/Dockerfile \
-      #       --attest type=sbom \
-      #       --attest type=provenance,mode=max \
-      #       --platform linux/amd64,linux/arm64,linux/arm/v7 \
-      #       --build-arg build_sbom=true \
-      #       --build-arg build_licensechecker=true \
-      #       --build-arg build_schemavalidator=true \
-      #       --build-arg build_vulnerabilityreport=true \
-      #       --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
-      #       --label org.opencontainers.image.revision=${{ github.sha }} \
-      #       -t ${{ steps.prepare.outputs.ref }} \
-      #       --push .
-      # - name: Sign with Notation - CRD image
-      #   uses: notaryproject/notation-action/sign@v1
-      #   with:
-      #     plugin_name: azure-kv
-      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
-      #     target_artifact_reference: ${{ steps.prepare.outputs.crdref }}
-      #     signature_format: cose
-      # - name: Sign with Notation - base image
-      #   uses: notaryproject/notation-action/sign@v1
-      #   with:
-      #     plugin_name: azure-kv
-      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
-      #     target_artifact_reference: ${{ steps.prepare.outputs.baseref }}
-      #     signature_format: cose
-      # - name: Sign with Notation - full image
-      #   uses: notaryproject/notation-action/sign@v1
-      #   with:
-      #     plugin_name: azure-kv
-      #     plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-      #     plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-      #     key_id: ${{ env.AZURE_KV_KEY_ID }}
-      #     target_artifact_reference: ${{ steps.prepare.outputs.ref }}
-      #     signature_format: cose
-      # - name: Sign with Cosign
-      #   run: |
-      #     cosign sign --yes ${{ steps.prepare.outputs.crdref }}
-      #     cosign sign --yes ${{ steps.prepare.outputs.baseref }}
-      #     cosign sign --yes ${{ steps.prepare.outputs.ref }}
+          cosign sign --yes ${{ steps.prepare.outputs.baseref }}
+          cosign sign --yes ${{ steps.prepare.outputs.ref }}
       - name: clear
         if: always()
         run: |
