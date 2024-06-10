@@ -19,7 +19,7 @@ jobs:
         AZURE_SUBSCRIPTION_ID: daae1e1a-63dc-454f-825d-b39289070f79
         AZURE_CLIENT_ID: 814e6e97-120c-4534-b8a9-f1645bc99500
         AZURE_TENANT_ID: 72f988bf-86f1-41af-91ab-2d7cd011db47
-        AZURE_KV_KEY_ID: https://ratify-persistent.vault.azure.net/keys/ratify-oss-signing/78b2da31c1a849db81f15da44cb59cd6
+        AZURE_KV_KEY_ID: https://ratify-persistent.vault.azure.net/keys/ratify-sign/4919e2153037437490a14520d1638e3f
         AZURE_KV_CHECKSUM: 06bb5198af31ce11b08c4557ae4c2cbfb09878dfa6b637b7407ebc2d57b87b34
         AZURE_KV_PLUGIN_URL: https://github.com/Azure/notation-azure-kv/releases/download/v1.2.0/notation-azure-kv_1.2.0_linux_amd64.tar.gz
     steps:
