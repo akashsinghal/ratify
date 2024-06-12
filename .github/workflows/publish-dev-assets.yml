@@ -108,7 +108,7 @@ jobs:
             -t ${{ steps.prepare.outputs.ref }} \
             --push .
       - name: Sign with Notation - CRD image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
@@ -117,7 +117,7 @@ jobs:
           target_artifact_reference: ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
           signature_format: cose
       - name: Sign with Notation - base image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
@@ -126,7 +126,7 @@ jobs:
           target_artifact_reference: ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
           signature_format: cose
       - name: Sign with Notation - full image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}

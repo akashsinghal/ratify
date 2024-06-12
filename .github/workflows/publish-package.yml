@@ -76,15 +76,6 @@ jobs:
             --label org.opencontainers.image.revision=${{ github.sha }} \
             -t ${{ steps.prepare.outputs.crdref }} \
             --push ./charts/ratify/crds
-      - name: Sign with Notation - CRD image
-        uses: notaryproject/notation-action/sign@v1
-        with:
-          plugin_name: azure-kv
-          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-          key_id: ${{ env.AZURE_KV_KEY_ID }}
-          target_artifact_reference: ${{ steps.prepare.outputs.crdref }}
-          signature_format: cose
       - name: docker build ratify base
         run: |
           docker buildx create --use         
@@ -112,7 +103,7 @@ jobs:
             -t ${{ steps.prepare.outputs.ref }} \
             --push .
       - name: Sign with Notation - CRD image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
@@ -121,7 +112,7 @@ jobs:
           target_artifact_reference: ${{ steps.prepare.outputs.crdref }}
           signature_format: cose
       - name: Sign with Notation - base image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
@@ -130,7 +121,7 @@ jobs:
           target_artifact_reference: ${{ steps.prepare.outputs.baseref }}
           signature_format: cose
       - name: Sign with Notation - full image
-        uses: notaryproject/notation-action/sign@v1
+        uses: notaryproject/notation-action/sign@31cdbfefbf6a0d67544a38ddaa34e1b28f57c1bc # v1.0.1
         with:
           plugin_name: azure-kv
           plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
