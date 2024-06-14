@@ -19,14 +19,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	re "github.com/deislabs/ratify/errors"
+	"github.com/deislabs/ratify/internal/logger"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
+	"github.com/docker/cli/cli/config/types"
 )
 
 // This config represents the credentials that should be used
@@ -36,7 +38,7 @@ type AuthConfig struct {
 	Password      string
 	IdentityToken string
 	Email         string
-	Provider      AuthProvider
+	Provider      AuthProvider `json:"-"` // Provider is not serialized
 	ExpiresOn     time.Time
 }
 
@@ -60,6 +62,9 @@ type defaultAuthProviderConf struct {
 }
 
 const DefaultAuthProviderName string = "dockerConfig"
+const DefaultDockerAuthTTL = 1 * time.Hour
+
+var logOpt = logger.Option{ComponentType: logger.AuthProvider}
 
 // init calls Register for our default provider, which simply reads the .dockercfg file.
 func init() {
@@ -76,11 +81,11 @@ func (s *defaultProviderFactory) Create(authProviderConfig AuthProviderConfig) (
 	conf := defaultAuthProviderConf{}
 	authProviderConfigBytes, err := json.Marshal(authProviderConfig)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 	}
 
 	if err := json.Unmarshal(authProviderConfigBytes, &conf); err != nil {
-		return nil, fmt.Errorf("failed to parse auth provider configuration: %w", err)
+		return nil, re.ErrorCodeConfigInvalid.NewError(re.AuthProvider, "", re.AuthProviderLink, err, "failed to parse auth provider configuration", re.HideStackTrace)
 	}
 
 	return &defaultAuthProvider{
@@ -89,7 +94,7 @@ func (s *defaultProviderFactory) Create(authProviderConfig AuthProviderConfig) (
 }
 
 // Enabled always returns true for defaultAuthProvider
-func (d *defaultAuthProvider) Enabled(ctx context.Context) bool {
+func (d *defaultAuthProvider) Enabled(_ context.Context) bool {
 	return true
 }
 
@@ -100,33 +105,46 @@ func (d *defaultAuthProvider) Provide(ctx context.Context, artifact string) (Aut
 	if d.configPath == "" {
 		var err error
 		if cfg, err = config.Load(config.Dir()); err != nil {
-			return AuthConfig{}, err
+			return AuthConfig{}, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 		}
 	} else {
 		cfg = configfile.New(d.configPath)
 		if _, err := os.Stat(d.configPath); err != nil {
-			return AuthConfig{}, err
+			return AuthConfig{}, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 		}
 		file, err := os.Open(d.configPath)
 		if err != nil {
-			return AuthConfig{}, err
+			return AuthConfig{}, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 		}
 		defer file.Close()
 		if err := cfg.LoadFromReader(file); err != nil {
-			return AuthConfig{}, err
+			return AuthConfig{}, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 		}
 	}
 
 	artifactHostName, err := GetRegistryHostName(artifact)
 	if err != nil {
-		return AuthConfig{}, err
+		return AuthConfig{}, re.ErrorCodeHostNameInvalid.WithError(err).WithComponentType(re.AuthProvider)
 	}
 
-	dockerAuthConfig := cfg.AuthConfigs[artifactHostName]
+	dockerAuthConfig, exists := cfg.AuthConfigs[artifactHostName]
+	if !exists {
+		logger.GetLogger(ctx, logOpt).Debugf("no credentials found for registry hostname: %s", artifactHostName)
+		hostnames := []string{}
+		for k := range cfg.AuthConfigs {
+			hostnames = append(hostnames, k)
+		}
+		logger.GetLogger(ctx, logOpt).Debugf("list of registry host names in config : %v", hostnames)
+		return AuthConfig{}, nil
+	}
+	if dockerAuthConfig == (types.AuthConfig{}) {
+		return AuthConfig{}, nil
+	}
 	authConfig := AuthConfig{
 		Username:      dockerAuthConfig.Username,
 		Password:      dockerAuthConfig.Password,
 		IdentityToken: dockerAuthConfig.IdentityToken,
+		ExpiresOn:     time.Now().Add(DefaultDockerAuthTTL),
 		Provider:      d,
 	}
 

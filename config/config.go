@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/deislabs/ratify/internal/constants"
+	"github.com/deislabs/ratify/internal/logger"
 	exConfig "github.com/deislabs/ratify/pkg/executor/config"
 	"github.com/deislabs/ratify/pkg/homedir"
 	"github.com/deislabs/ratify/pkg/policyprovider"
@@ -50,6 +52,7 @@ type Config struct {
 	PoliciesConfig  pcConfig.PoliciesConfig  `json:"policy,omitempty"`
 	VerifiersConfig vfConfig.VerifiersConfig `json:"verifier,omitempty"`
 	ExecutorConfig  exConfig.ExecutorConfig  `json:"executor,omitempty"`
+	LoggerConfig    logger.Config            `json:"logger,omitempty"`
 	fileHash        string                   `json:"-"`
 }
 
@@ -89,7 +92,8 @@ func CreateFromConfig(cf Config) ([]referrerstore.ReferrerStore, []verifier.Refe
 	}
 	logrus.Infof("stores successfully created. number of stores %d", len(stores))
 
-	verifiers, err := vf.CreateVerifiersFromConfig(cf.VerifiersConfig, GetDefaultPluginPath())
+	// in K8s , verifiers CR are deployed to specific namespace, namespace is not applicable in config file scenario
+	verifiers, err := vf.CreateVerifiersFromConfig(cf.VerifiersConfig, GetDefaultPluginPath(), constants.EmptyNamespace)
 
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "failed to load verifiers from config")
@@ -134,6 +138,21 @@ func GetDefaultPluginPath() string {
 		initConfigDir.Do(InitDefaultPaths)
 	}
 	return defaultPluginsPath
+}
+
+// returns default plugin version of 1.0.0
+func GetDefaultPluginVersion() string {
+	return "1.0.0"
+}
+
+// GetLoggerConfig returns logger configuration from config file at specified path.
+func GetLoggerConfig(configFilePath string) (logger.Config, error) {
+	config, err := Load(configFilePath)
+	if err != nil {
+		return logger.Config{}, fmt.Errorf("unable to load config: %w", err)
+	}
+
+	return config.LoggerConfig, nil
 }
 
 // if configFilePath is empty, return configuration path from environment variable

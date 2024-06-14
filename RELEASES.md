@@ -22,13 +22,21 @@ Example pre-release versions include `v0.1.0-alpha1`, `v0.1.0-beta2`, `v0.1.0-rc
 
 ## Pre Release Activity
 
-Most e2e-scenarios for cli, K8, and Azure are covered by the ratify e2e tests. Please refer to this [document](test/validation.md) for the current supported and unsupported tests. 
+1. Most e2e-scenarios for cli, K8s, and Azure are covered by the Ratify e2e tests. Please refer to this [document](test/validation.md) for the current supported and unsupported tests. Please perform manual prerelease validations for the unsupported tests list [here](test/validation.md#unsupported-tests)
 
-Please perform manual prerelease validations for the unsupported tests list [here](test/validation.md#unsupported-tests)
+2. If the format of the data returned for [external data calls](docs/reference/verification-result-version.md) has changed, validate change is also reflected in [`httpserver/types.go`](httpserver/types.go).
 
-Validate that the format of the data returned for external data calls has not changed. If it has changed update the version in `httpserver/types.go` to reflect a change in the format and document the update.
+3. Delete all dev images generated since the previous release under the `ratify-dev` and `ratify-crds-dev` [packages](https://github.com/orgs/deislabs/packages?repo_name=ratify). Each dev image tag is prefixed with `dev` followed by the date of creation and then the abbreviated 7 character commit SHA (e.g a build generated on March 8, 2023 from main branch with commit SHA `4cf98388ef33c587ef86b82e05cb0f7de2da2ea8` would be tagged `dev.20230308.4cf9838`). The most recent images are also tagged with a rolling tag `latest`.
 
-Delete all dev images generated since the previous release under the `ratify-dev` and `ratify-crds-dev` packages. Each dev image tag is prefixed with `dev` followed by the date of creation and then the abbreviated 7 character commit SHA (e.g a build generated on March 8, 2023 from main branch with commit SHA `4cf98388ef33c587ef86b82e05cb0f7de2da2ea8` would be tagged `dev.20230308.4cf9838`).
+4. Delete all dev helm charts since the previous release under the `ratify-chart-dev/ratify` [packages](https://github.com/orgs/deislabs/packages?repo_name=ratify). Each helm chart is published with a semantic version compatible tag `0-dev` followed by the date of creation and then the abbreviated 7 character commit SHA (e.g a chart generated on March 8, 2023 from main branch with commit SHA `4cf98388ef33c587ef86b82e05cb0f7de2da2ea8` would be tagged `0-dev.20230308.4cf9838`). The most recent dev chart is also tagged with the rolling tag `0-dev`.
+
+5. Copy contents from [`dev.helmfile.yaml`](dev.helmfile.yaml) to [`helmfile.yaml`](helmfile.yaml) & [`dev.high-availability.helmfile.yaml`](dev.high-availability.helmfile.yaml) to [`high-availability.helmfile.yaml`](high-availability.helmfile.yaml). You MUST update/remove values marked by comments in the files. The `dev` prefixed helmfiles are treated as staging files that are up to date with new changes on main branch. The primary `helmfile.yaml` and `high-availability.helmfile.yaml` MUST stay pinned to the current release since they are used by the quickstarts. Update `dev.helmfile.yaml` & `dev.high-availability.helmfile.yaml` ratify chart version to new release version.
+
+6. Our `main` branch contains an extra merge commits compared to `dev` due to the PR [workflow](CONTRIBUTING.md#pull-requests), once per release, we will need to sync `dev` with the `main` branch.
+Once we are looking to automate this with tracking [issue], for now we will need the following steps:
+  - maintainer manually disable allow force push in branch protection rule
+  - make sure the local main branch is up to date
+  - force push to dev branch, ```git push origin --force main:dev```
 ## Git Release Flow
 
 This section deals with the practical considerations of versioning in Git, this repo's version control system.  See the semantic versioning specification for the scope of changes allowed for each release type.
@@ -47,13 +55,23 @@ When a major release is required, the release commits should be merged with the 
 
 ### Tag and Release
 
-When the release branch is ready, a tag should be pushed with a name matching the branch name, e.g. `git tag v0.1.0-alpha1` and `git push --tags`.  This will trigger a [Goreleaser](https://goreleaser.com/) action that will build the binaries and creates a [GitHub release](https://help.github.com/articles/creating-releases/):
+Prepare the release with a [PR](https://github.com/deislabs/ratify/pull/1031/files) to update the chart value. When the release branch is ready, a tag should be pushed with a name matching the branch name, e.g. `git tag v0.1.0-alpha1` and `git push --tags`.  This will trigger a [Goreleaser](https://goreleaser.com/) action that will build the binaries and creates a [GitHub release](https://help.github.com/articles/creating-releases/):
 
 * The release will be marked as a draft to allow an final editing before publishing.
 * The release notes and other fields can edited after the action completes.  The description can be in Markdown.
 * The pre-release flag will be set for any release with a pre-release specifier.
 * The pre-built binaries are built from commit at the head of the release branch.
   * The files are named `ratify_<major>-<minor>-<patch>_<OS>_<ARCH>` with `.zip` files for Windows and `.tar.gz` for all others.
+
+## Post Release Activity
+
+1. Our `main` branch contains an extra merge commits compared to `dev` due to the PR [workflow](CONTRIBUTING.md#pull-requests), once per release, we will need to sync `dev` with the `main` branch.
+Once we are looking to automate this with tracking [issue], for now we will need the following steps:
+  - maintainer manually disable allow force push in branch protection rule
+  - make sure the local main branch is up to date
+  - force push to dev branch, ```git push origin --force main:dev```
+
+2. After a successful release, please manually trigger [quick start action](.github/quick-start.yml) to validate the quick start test is passing. Validate in the run logs that the version of ratify matches the latest released version.
 
 ### Weekly Dev Release
 
@@ -81,6 +99,6 @@ helm install ratify \
     --set image.repository=ghcr.io/deislabs/ratify-dev
     --set image.crdRepository=ghcr.io/deislabs/ratify-crds-dev
     --set image.tag=dev.<YYYYMMDD>.<ABBREVIATED_GIT_HASH_COMMIT>
-    --set-file notaryCert=./test/testdata/notary.crt
+    --set-file notationCerts[0]=./test/testdata/notation.crt
 ```
 NOTE: the tag field is the only value that will change when updating to newer dev build images

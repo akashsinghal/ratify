@@ -1,16 +1,23 @@
+# Copyright The Ratify Authors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 #!/usr/bin/env bats
 
 load helpers
 
-@test "notary verifier test" {
+@test "notation verifier test" {
     run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/notation:signed
     assert_cmd_verify_success
-
-    # Test with OCI Artifact Manifest Signature
-    if [[ $IS_OCI_1_1 == "true" ]]; then
-        run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/notation:ociartifact
-        assert_cmd_verify_success
-    fi
 
     run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/notation:unsigned
     assert_cmd_verify_failure
@@ -21,6 +28,24 @@ load helpers
     assert_cmd_verify_success
 
     run bin/ratify verify -c $RATIFY_DIR/config_notation_leaf_cert.json -s $TEST_REGISTRY/notation:leafSigned
+    assert_cmd_verify_failure
+}
+
+@test "notation verifier with type test" {
+    run bin/ratify verify -c $RATIFY_DIR/config_notation_verifier_with_type.json -s $TEST_REGISTRY/notation:leafSigned
+    assert_cmd_verify_success_with_type
+}
+
+@test "multiple notation verifiers test" {
+    run bin/ratify verify -c $RATIFY_DIR/config_multiple_notation_verifiers.json -s $TEST_REGISTRY/notation:leafSigned
+    assert_cmd_multi_verifier_success
+}
+
+@test "notation verifier leaf cert with rego policy" {
+    run bin/ratify verify -c $RATIFY_DIR/config_rego_policy_notation_root_cert.json -s $TEST_REGISTRY/notation:leafSigned
+    assert_cmd_verify_success
+
+    run bin/ratify verify -c $RATIFY_DIR/config_rego_policy_notation_leaf_cert.json -s $TEST_REGISTRY/notation:leafSigned
     assert_cmd_verify_failure
 }
 
@@ -40,26 +65,32 @@ load helpers
     run bin/ratify verify -c $RATIFY_DIR/complete_licensechecker_config.json -s $TEST_REGISTRY/licensechecker:v0
     assert_cmd_verify_success
 
-    # Test with OCI Artifact Manifest Signature
-    if [[ $IS_OCI_1_1 == "true" ]]; then
-        run bin/ratify verify -c $RATIFY_DIR/complete_licensechecker_config.json -s $TEST_REGISTRY/licensechecker:ociartifact
-        assert_cmd_verify_success
-    fi
-
     run bin/ratify verify -c $RATIFY_DIR/partial_licensechecker_config.json -s $TEST_REGISTRY/licensechecker:v0
     assert_cmd_verify_failure
 }
 
+@test "licensechecker verifier with type test" {
+    run bin/ratify verify -c $RATIFY_DIR/config_external_verifier_with_type.json -s $TEST_REGISTRY/licensechecker:v0
+    assert_cmd_verify_success_with_type
+}
+
 @test "sbom verifier test" {
+    # run with deny license config should fail
+    run bin/ratify verify -c $RATIFY_DIR/sbom_denylist_config_licensematch.json -s $TEST_REGISTRY/sbom:v0
+    assert_cmd_verify_failure
+
+    # run with deny package with unmatched version should succeed
+    run bin/ratify verify -c $RATIFY_DIR/sbom_denylist_config_nomatch.json -s $TEST_REGISTRY/sbom:v0
+    assert_cmd_verify_success
+
+    # run with deny package with matched name and version should fail
+    run bin/ratify verify -c $RATIFY_DIR/sbom_denylist_config_packagematch.json -s $TEST_REGISTRY/sbom:v0
+    assert_cmd_verify_failure
+
+
     # Notes: test would fail if sbom/notary types are explicitly specified in the policy
     run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/sbom:v0
     assert_cmd_verify_success
-
-    # Test with OCI Artifact Manifest Signature
-    if [[ $IS_OCI_1_1 == "true" ]]; then
-        run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/sbom:ociartifact
-        assert_cmd_verify_success
-    fi
 
     run bin/ratify verify -c $RATIFY_DIR/config.json -s $TEST_REGISTRY/sbom:unsigned
     assert_cmd_verify_failure
@@ -68,12 +99,11 @@ load helpers
 @test "schemavalidator verifier test" {
     run bin/ratify verify -c $RATIFY_DIR/schemavalidator_config.json -s $TEST_REGISTRY/schemavalidator:v0
     assert_cmd_verify_success
+}
 
-    # Test with OCI Artifact Manifest Signature
-    if [[ $IS_OCI_1_1 == "true" ]]; then
-        run bin/ratify verify -c $RATIFY_DIR/schemavalidator_config.json -s $TEST_REGISTRY/schemavalidator:ociartifact
-        assert_cmd_verify_success
-    fi
+@test "vulnerabilityreport verifier test" {
+    run bin/ratify verify -c $RATIFY_DIR/vulnerabilityreport_config.json -s $TEST_REGISTRY/vulnerabilityreport:v0
+    assert_cmd_verify_success
 }
 
 @test "sbom/notary/cosign/licensechecker verifiers test" {
@@ -87,7 +117,7 @@ load helpers
     assert_success
 
     # dynamic plugins enabled with feature flag
-    run bash -c "RATIFY_DYNAMIC_PLUGINS=1 bin/ratify verify -c $RATIFY_DIR/dynamic_plugins_config.json -s  $TEST_REGISTRY/all:v0 2>&1 >/dev/null | grep 'downloaded verifier plugin dynamic from .* to .*'"
+    run bash -c "RATIFY_EXPERIMENTAL_DYNAMIC_PLUGINS=1 bin/ratify verify -c $RATIFY_DIR/dynamic_plugins_config.json -s  $TEST_REGISTRY/all:v0 2>&1 >/dev/null | grep 'downloaded verifier plugin dynamic from .* to .*'"
     assert_success
 
     # ensure the plugin is downloaded and marked executable
@@ -101,7 +131,7 @@ load helpers
     assert_success
 
     # dynamic plugins enabled with feature flag
-    run bash -c "RATIFY_DYNAMIC_PLUGINS=1 bin/ratify verify -c $RATIFY_DIR/dynamic_plugins_config.json -s  $TEST_REGISTRY/all:v0 2>&1 >/dev/null | grep 'downloaded store plugin dynamicstore from .* to .*'"
+    run bash -c "RATIFY_EXPERIMENTAL_DYNAMIC_PLUGINS=1 bin/ratify verify -c $RATIFY_DIR/dynamic_plugins_config.json -s  $TEST_REGISTRY/all:v0 2>&1 >/dev/null | grep 'downloaded store plugin dynamicstore from .* to .*'"
     assert_success
 
     # ensure the plugin is downloaded and marked executable

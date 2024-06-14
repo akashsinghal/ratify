@@ -8,7 +8,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
-IdentityTHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
@@ -22,9 +22,9 @@ import (
 	"os"
 	"time"
 
+	re "github.com/deislabs/ratify/errors"
+	"github.com/deislabs/ratify/internal/logger"
 	provider "github.com/deislabs/ratify/pkg/common/oras/authprovider"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -44,13 +44,6 @@ type azureManagedIdentityAuthProviderConf struct {
 	ClientID string `json:"clientID"`
 }
 
-var (
-	// ErrorNoAuth indicates that no credentials are provided.
-	ErrorNoAuth    = fmt.Errorf("no credentials provided for Azure cloud provider")
-	ErrorNilEnv    = fmt.Errorf("env is nil pointer for GetServicePrincipalToken")
-	ErrorNilConfig = fmt.Errorf("config is nil pointer for GetServicePrincipalToken")
-)
-
 const (
 	azureManagedIdentityAuthProviderName string = "azureManagedIdentity"
 )
@@ -65,22 +58,22 @@ func (s *azureManagedIdentityProviderFactory) Create(authProviderConfig provider
 	conf := azureManagedIdentityAuthProviderConf{}
 	authProviderConfigBytes, err := json.Marshal(authProviderConfig)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeConfigInvalid.WithError(err).WithComponentType(re.AuthProvider)
 	}
 
 	if err := json.Unmarshal(authProviderConfigBytes, &conf); err != nil {
-		return nil, fmt.Errorf("failed to parse azure managed identity auth provider configuration: %w", err)
+		return nil, re.ErrorCodeConfigInvalid.NewError(re.AuthProvider, "", re.AzureManagedIdentityLink, err, "failed to parse azure managed identity auth provider configuration.", re.HideStackTrace)
 	}
 
 	tenant := os.Getenv("AZURE_TENANT_ID")
 	if tenant == "" {
-		return nil, fmt.Errorf("AZURE_TENANT_ID environment variable is empty")
+		return nil, re.ErrorCodeEnvNotSet.WithDetail("AZURE_TENANT_ID environment variable is empty").WithComponentType(re.AuthProvider)
 	}
 	client := os.Getenv("AZURE_CLIENT_ID")
 	if client == "" {
 		client = conf.ClientID
 		if client == "" {
-			return nil, fmt.Errorf("AZURE_CLIENT_ID environment variable is empty")
+			return nil, re.ErrorCodeEnvNotSet.WithDetail("AZURE_CLIENT_ID environment variable is empty").WithComponentType(re.AuthProvider)
 		}
 	}
 	if err != nil {
@@ -89,7 +82,7 @@ func (s *azureManagedIdentityProviderFactory) Create(authProviderConfig provider
 	// retrieve an AAD Access token
 	token, err := getManagedIdentityToken(context.Background(), client)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeAuthDenied.NewError(re.AuthProvider, "", re.AzureManagedIdentityLink, err, "", re.HideStackTrace)
 	}
 
 	return &azureManagedIdentityAuthProvider{
@@ -100,7 +93,7 @@ func (s *azureManagedIdentityProviderFactory) Create(authProviderConfig provider
 }
 
 // Enabled checks for non empty tenant ID and AAD access token
-func (d *azureManagedIdentityAuthProvider) Enabled(ctx context.Context) bool {
+func (d *azureManagedIdentityAuthProvider) Enabled(_ context.Context) bool {
 	if d.clientID == "" {
 		return false
 	}
@@ -133,26 +126,28 @@ func (d *azureManagedIdentityAuthProvider) Provide(ctx context.Context, artifact
 	if time.Now().Add(time.Minute * 5).After(d.identityToken.ExpiresOn) {
 		newToken, err := getManagedIdentityToken(ctx, d.clientID)
 		if err != nil {
-			return provider.AuthConfig{}, errors.Wrap(err, "could not refresh azure managed identity token")
+			return provider.AuthConfig{}, re.ErrorCodeAuthDenied.NewError(re.AuthProvider, "", re.AzureManagedIdentityLink, err, "could not refresh azure managed identity token", re.HideStackTrace)
 		}
 		d.identityToken = newToken
-		logrus.Info("successfully refreshed azure managed identity token")
+		logger.GetLogger(ctx, logOpt).Info("successfully refreshed azure managed identity token")
 	}
 	// add protocol to generate complete URI
-	serverUrl := "https://" + artifactHostName
+	serverURL := "https://" + artifactHostName
 
 	// create registry client and exchange AAD token for registry refresh token
-	refreshTokenClient := containerregistry.NewRefreshTokensClient(serverUrl)
+	refreshTokenClient := containerregistry.NewRefreshTokensClient(serverURL)
 	rt, err := refreshTokenClient.GetFromExchange(ctx, "access_token", artifactHostName, d.tenantID, "", d.identityToken.Token)
 	if err != nil {
-		return provider.AuthConfig{}, fmt.Errorf("failed to get refresh token for container registry by azure managed identity token - %w", err)
+		return provider.AuthConfig{}, re.ErrorCodeAuthDenied.NewError(re.AuthProvider, "", re.AzureManagedIdentityLink, err, "failed to get refresh token for container registry by azure managed identity token", re.HideStackTrace)
 	}
+
+	expiresOn := getACRExpiryIfEarlier(d.identityToken.ExpiresOn)
 
 	authConfig := provider.AuthConfig{
 		Username:  dockerTokenLoginUsernameGUID,
 		Password:  *rt.RefreshToken,
 		Provider:  d,
-		ExpiresOn: d.identityToken.ExpiresOn,
+		ExpiresOn: expiresOn,
 	}
 
 	return authConfig, nil
@@ -169,5 +164,5 @@ func getManagedIdentityToken(ctx context.Context, clientID string) (azcore.Acces
 	if cred != nil {
 		return cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: scopes})
 	}
-	return azcore.AccessToken{}, ErrorNilConfig
+	return azcore.AccessToken{}, re.ErrorCodeConfigInvalid.WithComponentType(re.AuthProvider).WithDetail("config is nil pointer for GetServicePrincipalToken")
 }

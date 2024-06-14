@@ -5,10 +5,12 @@ on:
   push:
     branches: 
       - main
+      - dev
       - 1.0.0*
   pull_request:
     branches: 
       - main
+      - dev
       - 1.0.0*
   schedule:
     - cron: '30 1 * * 0'
@@ -25,13 +27,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # tag=3.0.2
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # tag=3.0.2
       - name: setup go environment
-        uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
-          go-version: "1.20"
+          go-version: "1.21"
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@0225834cc549ee0ca93cb085b92954821a145866 # tag=v2.3.5
+        uses: github/codeql-action/init@530d4feaa9c62aaab2d250371e2061eb7a172363 # tag=v3.25.9
         with:
           languages: go
       - name: Run tidy
@@ -39,4 +41,4 @@ jobs:
       - name: Build CLI
         run: make build
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@0225834cc549ee0ca93cb085b92954821a145866 # tag=v2.3.5
+        uses: github/codeql-action/analyze@530d4feaa9c62aaab2d250371e2061eb7a172363 # tag=v3.25.9

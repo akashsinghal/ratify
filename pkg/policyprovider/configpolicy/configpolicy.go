@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	re "github.com/deislabs/ratify/errors"
 	"github.com/deislabs/ratify/pkg/common"
 	"github.com/deislabs/ratify/pkg/executor/types"
 	"github.com/deislabs/ratify/pkg/ocispecs"
@@ -40,13 +41,15 @@ type configPolicyEnforcerConf struct {
 	ArtifactVerificationPolicies map[string]vt.ArtifactTypeVerifyPolicy `json:"artifactVerificationPolicies,omitempty"`
 }
 
-const defaultPolicyName string = "default"
+const (
+	defaultPolicyName = "default"
+)
 
 type configPolicyFactory struct{}
 
 // init calls Register for our config policy provider
 func init() {
-	pf.Register("configPolicy", &configPolicyFactory{})
+	pf.Register(vt.ConfigPolicy, &configPolicyFactory{})
 }
 
 // Create initializes a new policy provider based on the provider selected in config
@@ -56,11 +59,11 @@ func (f *configPolicyFactory) Create(policyConfig config.PolicyPluginConfig) (po
 	conf := configPolicyEnforcerConf{}
 	policyProviderConfigBytes, err := json.Marshal(policyConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal policy config: %w", err)
+		return nil, re.ErrorCodeDataEncodingFailure.NewError(re.PolicyProvider, vt.ConfigPolicy, re.PolicyProviderLink, err, "failed to marshal policy config", re.HideStackTrace)
 	}
 
 	if err := json.Unmarshal(policyProviderConfigBytes, &conf); err != nil {
-		return nil, fmt.Errorf("failed to parse policy provider configuration: %w", err)
+		return nil, re.ErrorCodeDataDecodingFailure.NewError(re.PolicyProvider, vt.ConfigPolicy, re.PolicyProviderLink, err, "failed to unmarshal policy config", re.HideStackTrace)
 	}
 
 	if conf.ArtifactVerificationPolicies == nil {
@@ -75,12 +78,12 @@ func (f *configPolicyFactory) Create(policyConfig config.PolicyPluginConfig) (po
 }
 
 // VerifyNeeded determines if the given subject/reference artifact should be verified
-func (enforcer PolicyEnforcer) VerifyNeeded(ctx context.Context, subjectReference common.Reference, referenceDesc ocispecs.ReferenceDescriptor) bool {
+func (enforcer PolicyEnforcer) VerifyNeeded(_ context.Context, _ common.Reference, _ ocispecs.ReferenceDescriptor) bool {
 	return true
 }
 
 // ContinueVerifyOnFailure determines if the given error can be ignored and verification can be continued.
-func (enforcer PolicyEnforcer) ContinueVerifyOnFailure(ctx context.Context, subjectReference common.Reference, referenceDesc ocispecs.ReferenceDescriptor, partialVerifyResult types.VerifyResult) bool {
+func (enforcer PolicyEnforcer) ContinueVerifyOnFailure(_ context.Context, _ common.Reference, referenceDesc ocispecs.ReferenceDescriptor, _ types.VerifyResult) bool {
 	artifactType := referenceDesc.ArtifactType
 	policy := enforcer.ArtifactTypePolicies[artifactType]
 	if policy == "" {
@@ -88,13 +91,12 @@ func (enforcer PolicyEnforcer) ContinueVerifyOnFailure(ctx context.Context, subj
 	}
 	if policy == vt.AnyVerifySuccess {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 // ErrorToVerifyResult converts an error to a properly formatted verify result
-func (enforcer PolicyEnforcer) ErrorToVerifyResult(ctx context.Context, subjectRefString string, verifyError error) types.VerifyResult {
+func (enforcer PolicyEnforcer) ErrorToVerifyResult(_ context.Context, subjectRefString string, verifyError error) types.VerifyResult {
 	errorReport := verifier.VerifierResult{
 		Subject:   subjectRefString,
 		IsSuccess: false,
@@ -107,7 +109,7 @@ func (enforcer PolicyEnforcer) ErrorToVerifyResult(ctx context.Context, subjectR
 
 // OverallVerifyResult determines the final outcome of verification that is constructed using the results from
 // individual verifications
-func (enforcer PolicyEnforcer) OverallVerifyResult(ctx context.Context, verifierReports []interface{}) bool {
+func (enforcer PolicyEnforcer) OverallVerifyResult(_ context.Context, verifierReports []interface{}) bool {
 	if len(verifierReports) <= 0 {
 		return false
 	}
@@ -154,4 +156,9 @@ func (enforcer PolicyEnforcer) OverallVerifyResult(ctx context.Context, verifier
 		}
 	}
 	return true
+}
+
+// GetPolicyType returns the type of the policy.
+func (enforcer PolicyEnforcer) GetPolicyType(_ context.Context) string {
+	return vt.ConfigPolicy
 }

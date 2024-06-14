@@ -27,18 +27,22 @@ export AKS_NAME="${AKS_NAME:-ratify-aks-${SUFFIX}}"
 export KEYVAULT_NAME="${KEYVAULT_NAME:-ratify-akv-${SUFFIX}}"
 export USER_ASSIGNED_IDENTITY_NAME="${USER_ASSIGNED_IDENTITY_NAME:-ratify-e2e-identity-${SUFFIX}}"
 export LOCATION="eastus"
-export KUBERNETES_VERSION=${1:-1.24.6}
-GATEKEEPER_VERSION=${2:-3.11.0}
+export KUBERNETES_VERSION=${1:-1.29.2}
+GATEKEEPER_VERSION=${2:-3.16.0}
 TENANT_ID=$3
 export RATIFY_NAMESPACE=${4:-gatekeeper-system}
 CERT_DIR=${5:-"~/ratify/certs"}
-export NOTARY_PEM_NAME="notary"
+export AZURE_SP_OBJECT_ID=$6
+export NOTATION_PEM_NAME="notation"
+export NOTATION_CHAIN_PEM_NAME="notationchain"
+export KEYVAULT_KEY_NAME="test-key"
+
 TAG="test${SUFFIX}"
 REGISTRY="${ACR_NAME}.azurecr.io"
 
 build_push_to_acr() {
   echo "Building and pushing images to ACR"
-  docker build --progress=plain --no-cache -f ./httpserver/Dockerfile -t "${ACR_NAME}.azurecr.io/test/localbuild:${TAG}" .
+  docker build --progress=plain --no-cache --build-arg build_sbom=true --build-arg build_licensechecker=true --build-arg build_schemavalidator=true --build-arg build_vulnerabilityreport=true -f ./httpserver/Dockerfile -t "${ACR_NAME}.azurecr.io/test/localbuild:${TAG}" .
   docker push "${REGISTRY}/test/localbuild:${TAG}"
 
   docker build --progress=plain --no-cache --build-arg KUBE_VERSION=${KUBERNETES_VERSION} --build-arg TARGETOS="linux" --build-arg TARGETARCH="amd64" -f crd.Dockerfile -t "${ACR_NAME}.azurecr.io/test/localbuildcrd:${TAG}" ./charts/ratify/crds
@@ -47,20 +51,14 @@ build_push_to_acr() {
 
 deploy_gatekeeper() {
   echo "deploying gatekeeper"
-  helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
-  helm install gatekeeper/gatekeeper \
-    --version ${GATEKEEPER_VERSION} \
-    --name-template=gatekeeper \
-    --namespace gatekeeper-system --create-namespace \
-    --set enableExternalData=true \
-    --set validatingWebhookTimeoutSeconds=7 \
-    --set auditInterval=0
+  make e2e-deploy-gatekeeper GATEKEEPER_VERSION=${GATEKEEPER_VERSION} GATEKEEPER_NAMESPACE="gatekeeper-system"
 }
 
 deploy_ratify() {
   echo "deploying ratify"
   local IDENTITY_CLIENT_ID=$(az identity show --name ${USER_ASSIGNED_IDENTITY_NAME} --resource-group ${GROUP_NAME} --query 'clientId' -o tsv)
   local VAULT_URI=$(az keyvault show --name ${KEYVAULT_NAME} --resource-group ${GROUP_NAME} --query "properties.vaultUri" -otsv)
+
   helm install ratify \
     ./charts/ratify --atomic \
     --namespace ${RATIFY_NAMESPACE} --create-namespace \
@@ -68,30 +66,53 @@ deploy_ratify() {
     --set image.crdRepository=${REGISTRY}/test/localbuildcrd \
     --set image.tag=${TAG} \
     --set gatekeeper.version=${GATEKEEPER_VERSION} \
-    --set akvCertConfig.enabled=true \
-    --set akvCertConfig.vaultURI=${VAULT_URI} \
-    --set akvCertConfig.cert1Name=${NOTARY_PEM_NAME} \
-    --set akvCertConfig.tenantId=${TENANT_ID} \
+    --set azurekeyvault.enabled=true \
+    --set azurekeyvault.vaultURI=${VAULT_URI} \
+    --set azurekeyvault.certificates[0].name=${NOTATION_PEM_NAME} \
+    --set azurekeyvault.certificates[1].name=${NOTATION_CHAIN_PEM_NAME} \
+    --set azurekeyvault.tenantId=${TENANT_ID} \
     --set oras.authProviders.azureWorkloadIdentityEnabled=true \
     --set azureWorkloadIdentity.clientId=${IDENTITY_CLIENT_ID} \
-    --set-file cosign.key=".staging/cosign/cosign.pub" \
-    --set logLevel=debug
+    --set azurekeyvault.keys[0].name=${KEYVAULT_KEY_NAME} \
+    --set featureFlags.RATIFY_CERT_ROTATION=true \
+    --set logger.level=debug
 
   kubectl delete verifiers.config.ratify.deislabs.io/verifier-cosign
 
-  kubectl apply -f https://deislabs.github.io/ratify/library/default/template.yaml
-  kubectl apply -f https://deislabs.github.io/ratify/library/default/samples/constraint.yaml
+  kubectl apply -f https://ratify-project.github.io/ratify/library/default/template.yaml
+  kubectl apply -f https://ratify-project.github.io/ratify/library/default/samples/constraint.yaml
 }
 
 upload_cert_to_akv() {
-  rm -f notary.pem
-  cat ~/.config/notation/localkeys/ratify-bats-test.key >>notary.pem
-  cat ~/.config/notation/localkeys/ratify-bats-test.crt >>notary.pem
+  rm -f notation.pem
+  cat ~/.config/notation/localkeys/ratify-bats-test.key >>notation.pem
+  cat ~/.config/notation/localkeys/ratify-bats-test.crt >>notation.pem
 
+  echo "uploading notation.pem"
   az keyvault certificate import \
     --vault-name ${KEYVAULT_NAME} \
-    -n ${NOTARY_PEM_NAME} \
-    -f notary.pem
+    -n ${NOTATION_PEM_NAME} \
+    -f notation.pem
+
+  rm -f notationchain.pem
+
+  cat .staging/notation/leaf-test/leaf.key >>notationchain.pem
+  cat .staging/notation/leaf-test/leaf.crt >>notationchain.pem
+
+  echo "uploading notationchain.pem"
+  az keyvault certificate import \
+    --vault-name ${KEYVAULT_NAME} \
+    -n ${NOTATION_CHAIN_PEM_NAME} \
+    -f notationchain.pem \
+    -p @./test/bats/tests/config/akvpolicy.json
+}
+
+create_key_akv() {
+  az keyvault key create \
+    --vault-name ${KEYVAULT_NAME} \
+    -n ${KEYVAULT_KEY_NAME} \
+    --kty RSA \
+    --size 2048
 }
 
 save_logs() {
@@ -106,6 +127,12 @@ save_logs() {
 cleanup() {
   save_logs || true
 
+  echo "Delete key vault"
+  az keyvault delete --name "${KEYVAULT_NAME}" --resource-group "${GROUP_NAME}" || true
+
+  echo "Purge key vault"
+  az keyvault purge --name "${KEYVAULT_NAME}" --no-wait || true
+
   echo "Deleting group"
   az group delete --name "${GROUP_NAME}" --yes --no-wait || true
 }
@@ -114,10 +141,11 @@ trap cleanup EXIT
 
 main() {
   ./scripts/create-azure-resources.sh
-
+  create_key_akv
+  
   local ACR_USER_NAME="00000000-0000-0000-0000-000000000000"
   local ACR_PASSWORD=$(az acr login --name ${ACR_NAME} --expose-token --output tsv --query accessToken)
-  make e2e-azure-setup TEST_REGISTRY=$REGISTRY TEST_REGISTRY_USERNAME=${ACR_USER_NAME} TEST_REGISTRY_PASSWORD=${ACR_PASSWORD}
+  make e2e-azure-setup TEST_REGISTRY=$REGISTRY TEST_REGISTRY_USERNAME=${ACR_USER_NAME} TEST_REGISTRY_PASSWORD=${ACR_PASSWORD} KEYVAULT_KEY_NAME=${KEYVAULT_KEY_NAME} KEYVAULT_NAME=${KEYVAULT_NAME}
 
   build_push_to_acr
   upload_cert_to_akv

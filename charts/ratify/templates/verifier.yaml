@@ -1,22 +1,30 @@
+{{- $fullname := include "ratify.fullname" . -}}
 apiVersion: config.ratify.deislabs.io/v1beta1
 kind: Verifier
 metadata:
-  name: verifier-notary
+  name: verifier-notation
   annotations:
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "5"
 spec:
-  name: notaryv2
+  name: notation
+  version: 1.0.0
   artifactTypes: application/vnd.cncf.notary.signature
   parameters:
-    
     verificationCertStores:
       certs:
-        {{- if .Values.akvCertConfig.enabled }}
-        - certstore-akv
-        {{- else }}
-        - {{ include "ratify.fullname" . }}-notary-inline-cert
+        {{- if or .Values.azurekeyvault.enabled .Values.akvCertConfig.enabled }}
+        - kmprovider-akv
         {{- end }}
+        {{- if .Values.notationCert }}
+          {{- if .Values.notationCerts }}
+          {{- fail "Please specify notation certs with .Values.notationCerts, single certificate .Values.notationCert has been deprecated, will soon be removed." }}
+          {{- end }}
+        - {{$fullname}}-notation-inline-cert
+        {{- end }} 
+        {{- range $i, $cert := .Values.notationCerts }}
+        - {{$fullname}}-notation-inline-cert-{{$i}}
+        {{- end }} 
     trustPolicyDoc:
       version: "1.0"
       trustPolicies:
@@ -42,5 +50,103 @@ spec:
   name: cosign
   artifactTypes: application/vnd.dev.cosign.artifact.sig.v1+json
   parameters:
+    {{- if  (eq (include "ratify.cosignLegacy" .) "false") }}
+    trustPolicies:
+      - name: default
+        version: 1.0.0
+        scopes:
+          {{- range $i, $scope := .Values.cosign.scopes }}
+          - "{{$scope}}"
+          {{- end }}
+        keys:
+          {{- range $i, $key := .Values.cosignKeys }}
+          - provider: {{$fullname}}-cosign-inline-key-{{$i}}
+          {{- end }}
+          {{- if and .Values.azurekeyvault.enabled (gt (len .Values.azurekeyvault.keys) 0) }}
+          - provider: kmprovider-akv
+          {{- end }}
+        tLogVerify: {{ .Values.cosign.tLogVerify }}
+        rekorURL: {{ .Values.cosign.rekorURL }}
+        {{- if or .Values.cosign.keyless.certificateIdentity .Values.cosign.keyless.certificateIdentityRegExp .Values.cosign.keyless.certificateOIDCIssuer .Values.cosign.keyless.certificateOIDCIssuerRegExp }}
+        keyless:
+          ctLogVerify: {{ .Values.cosign.keyless.ctLogVerify }}
+          certificateIdentity: {{ .Values.cosign.keyless.certificateIdentity }}
+          certificateIdentityRegExp: {{ .Values.cosign.keyless.certificateIdentityRegExp }}
+          certificateOIDCIssuer: {{ .Values.cosign.keyless.certificateOIDCIssuer }}
+          certificateOIDCIssuerRegExp: {{ .Values.cosign.keyless.certificateOIDCIssuerRegExp }}
+        {{- end }}
+    {{- else }}
     key: /usr/local/ratify-certs/cosign/cosign.pub
+    {{- end }}
+{{- end }}
+---
+{{- if .Values.vulnerabilityreport.enabled }}
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: Verifier
+metadata:
+  name: verifier-vulnerabilityreport
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "5"
+spec:
+  name: vulnerabilityreport
+  version: 1.0.0
+  artifactTypes: application/sarif+json
+  parameters:
+    {{- if .Values.vulnerabilityreport.notaryProjectSignatureRequired }}
+    nestedReferences: application/vnd.cncf.notary.signature
+    {{- end }}
+    {{- if .Values.vulnerabilityreport.passthrough }}
+    passthrough: {{ .Values.vulnerabilityreport.passthrough }}
+    {{- end }}
+    {{- if .Values.vulnerabilityreport.maximumAge }}
+    maximumAge: {{ .Values.vulnerabilityreport.maximumAge }}
+    {{- end }}
+    {{- if .Values.vulnerabilityreport.schemaURL }}
+    schemaURL: {{ .Values.vulnerabilityreport.schemaURL }}
+    {{- end }}
+    {{- if .Values.vulnerabilityreport.createdAnnotationName }}
+    createdAnnotationName: {{ .Values.vulnerabilityreport.createdAnnotationName }}
+    {{- end }}
+    {{- if gt (len .Values.vulnerabilityreport.disallowedSeverities) 0 }}
+    disallowedSeverities:
+      {{- range .Values.vulnerabilityreport.disallowedSeverities }}
+      - {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- if gt (len .Values.vulnerabilityreport.denylistCVEs) 0 }}
+    denylistCVEs:
+      {{- range .Values.vulnerabilityreport.denylistCVEs }}
+      - {{ . }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+
+---
+{{- if .Values.sbom.enabled }}
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: Verifier
+metadata:
+  name: verifier-sbom
+spec:
+  name: sbom
+  version: 2.0.0-alpha.1
+  artifactTypes: application/spdx+json
+  parameters:
+    {{- if gt (len .Values.sbom.disallowedPackages) 0 }}
+    disallowedPackages:
+      {{- range .Values.sbom.disallowedPackages }}
+      - name: {{ .name }}
+        version: {{ .version }}
+      {{- end }}
+    {{- end }}
+    {{- if gt (len .Values.sbom.disallowedLicenses) 0 }}
+    disallowedLicenses:
+      {{- range .Values.sbom.disallowedLicenses }}
+      - {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.sbom.notaryProjectSignatureRequired }}
+    nestedReferences: application/vnd.cncf.notary.signature
+    {{- end }}
 {{- end }}

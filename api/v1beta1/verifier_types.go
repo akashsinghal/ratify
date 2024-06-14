@@ -23,13 +23,16 @@ import (
 
 // VerifierSpec defines the desired state of Verifier
 type VerifierSpec struct {
-	// Important: Run "make" to regenerate code after modifying this file
+	// Important: Run "make install-crds" to regenerate code after modifying this file
 
 	// Name of the verifier
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
+
+	// Version of the verifier plugin. Optional
+	Version string `json:"version,omitempty"`
 
 	// The type of artifact this verifier handles
-	ArtifactTypes string `json:"artifactTypes,omitempty"`
+	ArtifactTypes string `json:"artifactTypes"`
 
 	// # Optional. URL/file path
 	Address string `json:"address,omitempty"`
@@ -45,12 +48,24 @@ type VerifierSpec struct {
 // VerifierStatus defines the observed state of Verifier
 type VerifierStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Important: Run "make install-crds" to regenerate code after modifying this file
+
+	// Is successful in finding the plugin
+	IsSuccess bool `json:"issuccess"`
+	// Error message if operation was unsuccessful
+	// +optional
+	Error string `json:"error,omitempty"`
+	// Truncated error message if the message is too long
+	// +optional
+	BriefError string `json:"brieferror,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope="Cluster"
+// +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="IsSuccess",type=boolean,JSONPath=`.status.issuccess`
+// +kubebuilder:printcolumn:name="Error",type=string,JSONPath=`.status.brieferror`
 // Verifier is the Schema for the verifiers API
 type Verifier struct {
 	metav1.TypeMeta   `json:",inline"`

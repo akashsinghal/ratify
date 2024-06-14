@@ -24,6 +24,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/deislabs/ratify/internal/version"
 	"github.com/deislabs/ratify/pkg/common/oras/authprovider"
 	commonutils "github.com/deislabs/ratify/pkg/common/utils"
 	"github.com/deislabs/ratify/pkg/ocispecs"
@@ -33,7 +34,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
-type PluginSource struct {
+type PluginSource struct { //nolint:revive // ignore linter to have unique type name
 	Artifact     string                          `json:"artifact"`
 	AuthProvider authprovider.AuthProviderConfig `json:"authProvider,omitempty"`
 }
@@ -67,7 +68,7 @@ func DownloadPlugin(source PluginSource, targetPath string) error {
 	repository.Client = &auth.Client{
 		Client: &http.Client{Timeout: 10 * time.Second, Transport: http.DefaultTransport.(*http.Transport).Clone()},
 		Header: http.Header{
-			"User-Agent": {"ratify"},
+			"User-Agent": {version.UserAgent},
 		},
 		Cache: auth.NewCache(),
 		Credential: func(ctx context.Context, registry string) (auth.Credential, error) {
@@ -117,7 +118,7 @@ func DownloadPlugin(source PluginSource, targetPath string) error {
 			return err
 		}
 		referenceManifest = commonutils.OciManifestToReferenceManifest(imageManifest)
-	} else if referenceManifestDescriptor.MediaType == oci.MediaTypeArtifactManifest {
+	} else if referenceManifestDescriptor.MediaType == ocispecs.MediaTypeArtifactManifest {
 		if err := json.Unmarshal(manifestBytes, &referenceManifest); err != nil {
 			return err
 		}
@@ -125,10 +126,13 @@ func DownloadPlugin(source PluginSource, targetPath string) error {
 		return fmt.Errorf("unsupported manifest media type: %s", referenceManifestDescriptor.MediaType)
 	}
 
+	if len(referenceManifest.Blobs) == 0 {
+		return fmt.Errorf("no blobs found in the manifest")
+	}
+
 	// download the first blob to the target path
-	blobReference := fmt.Sprintf("%s@%s", source, referenceManifest.Blobs[0].Digest)
-	logrus.Debugf("Downloading blob %s", blobReference)
-	_, blobReader, err := repository.Blobs().FetchReference(ctx, blobReference)
+	logrus.Debugf("Downloading blob %s", referenceManifest.Blobs[0].Digest.String())
+	_, blobReader, err := repository.Blobs().FetchReference(ctx, referenceManifest.Blobs[0].Digest.String())
 	if err != nil {
 		return err
 	}

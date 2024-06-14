@@ -33,7 +33,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type AwsEcrBasicProviderFactory struct{}
+type AwsEcrBasicProviderFactory struct{} //nolint:revive // ignore linter to have unique type name
 type awsEcrBasicAuthProvider struct {
 	ecrAuthToken EcrAuthToken
 	providerName string
@@ -68,13 +68,16 @@ func (d *awsEcrBasicAuthProvider) getEcrAuthToken(artifact string) (EcrAuthToken
 	}
 
 	ctx := context.Background()
-
+	// TODO: Update to use regional endpoint
+	// nolint:staticcheck
 	resolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 		if service == ecr.ServiceID && region == apiOverrideRegion {
 			logrus.Info("AWS ECR basic auth using custom endpoint resolver...")
 			logrus.Infof("AWS ECR basic auth API override endpoint: %s", apiOverrideEndpoint)
 			logrus.Infof("AWS ECR basic auth API override partition: %s", apiOverridePartition)
 			logrus.Infof("AWS ECR basic auth API override region: %s", apiOverrideRegion)
+			// TODO: Update to use regional endpoint
+			// nolint:staticcheck
 			return aws.Endpoint{
 				URL:           apiOverrideEndpoint,
 				PartitionID:   apiOverridePartition,
@@ -82,9 +85,12 @@ func (d *awsEcrBasicAuthProvider) getEcrAuthToken(artifact string) (EcrAuthToken
 			}, nil
 		}
 		// returning EndpointNotFoundError will allow the service to fall back to its default resolution
+		// TODO: Update to use regional endpoint
+		// nolint:staticcheck
 		return aws.Endpoint{}, &aws.EndpointNotFoundError{}
 	})
-
+	// TODO: Update to use regional endpoint
+	// nolint:staticcheck
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithEndpointResolverWithOptions(resolver),
 		config.WithWebIdentityRoleCredentialOptions(func(options *stscreds.WebIdentityRoleOptions) {
 			options.RoleSessionName = awsSessionName
@@ -140,7 +146,7 @@ func (s *AwsEcrBasicProviderFactory) Create(authProviderConfig provider.AuthProv
 }
 
 // Enabled checks for non-empty AWS IAM creds
-func (d *awsEcrBasicAuthProvider) Enabled(ctx context.Context) bool {
+func (d *awsEcrBasicAuthProvider) Enabled(_ context.Context) bool {
 	if d.providerName == "" {
 		logrus.Error("basic ECR providerName was empty")
 		return false

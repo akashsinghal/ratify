@@ -16,8 +16,10 @@ limitations under the License.
 package certificateprovider
 
 import (
+	"errors"
 	"testing"
 
+	ratifyerrors "github.com/deislabs/ratify/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,11 +32,16 @@ func TestDecodeCertificates(t *testing.T) {
 	}{
 		{
 			desc:        "empty string",
-			expectedErr: false,
+			expectedErr: true,
 		},
 		{
 			desc:        "invalid certificate",
 			pemString:   "-----BEGIN CERTIFICATE-----\nbaddata\n-----END CERTIFICATE-----\n",
+			expectedErr: true,
+		},
+		{
+			desc:        "invalid certificate",
+			pemString:   "-----BEGIN PUBLIC KEY-----MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAweAc4xikYT4ZszXVdF5mrgP0zKVYi4Ces0py9dw8XZfh/Hlxb5xWMs4DzTcKwmLatgKNSrvNyOaxkBD90PvcYNaTCwzwQ09kZ5dYtVOV4sdzeyOj8UDtf4MF5eJgJj/wWCQJnWrX/4n6nSdNTXSJEFAZkDv0BKVkZekJHn3fh+pOuv8UtvOrY1NjNK/TLWxB+8xpwugeB9oZ+VgV/gHZBLprxYkmUDsfngYy3+r6RZ+hInalZc5uAbtRUoB8+nVhXXOe3iVcVWFoWPMJ2fuPHz/8cDjv02MNWa/MeAt+ItW3N+VFZNkwbu5en3FepsxzRl04rhZzr1DSX6V6CVX43wIDAQAB-----END PUBLIC KEY-----",
 			expectedErr: true,
 		},
 		{
@@ -98,8 +105,8 @@ func TestDecodeCertificates_FailedToDecode(t *testing.T) {
 		t.Fatalf("DecodeCertificates should return an error")
 	}
 
-	expectedError := "failed to decode pem block"
-	if err.Error() != expectedError {
+	expectedError := ratifyerrors.ErrorCodeCertInvalid.WithDetail("failed to decode pem block")
+	if !errors.Is(err, expectedError) {
 		t.Fatalf("unexpected error, expected %+v, got %+v", expectedError, err.Error())
 	}
 }
@@ -114,8 +121,8 @@ func TestDecodeCertificates_FailedX509ParseError(t *testing.T) {
 		t.Fatalf("DecodeCertificates should return an error")
 	}
 
-	expectedError := "error parsing x509 certificate: x509: malformed issuer"
-	if err.Error() != expectedError {
+	expectedError := ratifyerrors.ErrorCodeCertInvalid.WithDetail("error parsing x509 certificate: x509: malformed issuer")
+	if !errors.Is(err, expectedError) {
 		t.Fatalf("unexpected error, expected %+v, got %+v", expectedError, err.Error())
 	}
 }

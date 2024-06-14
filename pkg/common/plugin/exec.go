@@ -16,15 +16,18 @@ limitations under the License.
 package plugin
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/deislabs/ratify/internal/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,6 +35,10 @@ const (
 	maxRetryCount = 5
 	waitDuration  = time.Second
 )
+
+var logOpt = logger.Option{
+	ComponentType: logger.Plugin,
+}
 
 // Executor is an interface that defines methods to lookup a plugin and execute it.
 type Executor interface {
@@ -46,6 +53,7 @@ type DefaultExecutor struct {
 	Stderr io.Writer
 }
 
+// return the command output and the error
 func (e *DefaultExecutor) ExecutePlugin(ctx context.Context, pluginPath string, cmdArgs []string, stdinData []byte, environ []string) ([]byte, error) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -83,6 +91,7 @@ func (e *DefaultExecutor) ExecutePlugin(ctx context.Context, pluginPath string, 
 		// If the plugin is about to be completed, then we wait a
 		// second and try it again
 		if strings.Contains(err.Error(), "text file busy") {
+			logrus.Debugf("command returned text file busy, retrying after %v", waitDuration)
 			time.Sleep(waitDuration)
 			continue
 		}
@@ -91,30 +100,73 @@ func (e *DefaultExecutor) ExecutePlugin(ctx context.Context, pluginPath string, 
 		return nil, e.pluginErr(err, stdout.Bytes(), stderr.Bytes())
 	}
 
-	// Copy stderr to caller's buffer in case plugin printed to both
-	// stdout and stderr for some reason. Ignore failures as stderr is
-	// only informational.
-	if e.Stderr != nil && stderr.Len() > 0 {
-		_, _ = stderr.WriteTo(e.Stderr)
+	pluginOutputJSON, pluginOutputMsgs := parsePluginOutput(stdout, stderr)
+
+	// Disregards plugin source stream and logs the plugin messages to stderr
+	for _, msg := range pluginOutputMsgs {
+		msg := strings.ToLower(msg)
+		switch {
+		case strings.HasPrefix(msg, "info"):
+			msg = strings.Replace(msg, "info: ", "", -1)
+			logger.GetLogger(ctx, logOpt).Infof("[Plugin] %s", msg)
+		case strings.HasPrefix(msg, "warn"):
+			msg = strings.Replace(msg, "warn: ", "", -1)
+			logger.GetLogger(ctx, logOpt).Warnf("[Plugin] %s", msg)
+		case strings.HasPrefix(msg, "debug"):
+			msg = strings.Replace(msg, "debug: ", "", -1)
+			logger.GetLogger(ctx, logOpt).Debugf("[Plugin] %s", msg)
+		default:
+			fmt.Fprintf(os.Stderr, "[Plugin] %s,", msg)
+		}
 	}
-	// TODO stdout reader
-	return stdout.Bytes(), nil
+
+	return pluginOutputJSON, nil
 }
 
 func (e *DefaultExecutor) pluginErr(err error, stdout, stderr []byte) error {
-	errMsg := Error{}
-	if len(stdout) == 0 {
-		if len(stderr) == 0 {
-			errMsg.Msg = fmt.Sprintf("plugin failed with no proper error message: %v", err)
-		} else {
-			errMsg.Msg = fmt.Sprintf("plugin failed with error: %q", string(stderr))
-		}
-	} else if perr := json.Unmarshal(stdout, &errMsg); perr != nil {
-		errMsg.Msg = fmt.Sprintf("plugin failed and parsing its error message also failed with error %q: %v", string(stdout), perr)
-	}
-	return &errMsg
+	var stdOutBuffer bytes.Buffer
+	var stdErrBuffer bytes.Buffer
+
+	// writing them to buffer to avoid lint error
+	stdOutBuffer.Write(stdout)
+	stdErrBuffer.Write(stderr)
+
+	errCombined := Error{}
+	errCombined.Msg = fmt.Sprintf("plugin failed with error: '%v', msg from stError '%v', msg from stdOut '%v'", err.Error(), stdErrBuffer.String(), stdOutBuffer.String())
+	return &errCombined
 }
 
 func (e *DefaultExecutor) FindInPaths(plugin string, paths []string) (string, error) {
 	return FindInPaths(plugin, paths)
+}
+
+func parsePluginOutput(stdout *bytes.Buffer, stderr *bytes.Buffer) ([]byte, []string) {
+	var obj interface{}
+	var outputBuffer bytes.Buffer
+	var jsonBuffer bytes.Buffer
+	var messages []string
+
+	// Combine stderr and stdout
+	outputBuffer.Write(stderr.Bytes())
+	outputBuffer.Write(stdout.Bytes())
+
+	scanner := bufio.NewScanner(&outputBuffer)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Assumes a single JSON object is returned somewhere in the output
+		// does not handle multiple JSON objects
+		if strings.Contains(line, "{") {
+			err := json.NewDecoder(strings.NewReader(line)).Decode(&obj)
+			if err != nil {
+				continue
+			}
+
+			jsonString, _ := json.Marshal(obj)
+			jsonBuffer.WriteString(string(jsonString))
+		} else {
+			messages = append(messages, line)
+		}
+	}
+
+	return jsonBuffer.Bytes(), messages
 }

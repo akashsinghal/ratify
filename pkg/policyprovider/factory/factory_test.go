@@ -25,14 +25,14 @@ import (
 
 type TestPolicyProviderFactory struct{}
 
-func (f *TestPolicyProviderFactory) Create(policyConfig config.PolicyPluginConfig) (policyprovider.PolicyProvider, error) {
+func (f *TestPolicyProviderFactory) Create(_ config.PolicyPluginConfig) (policyprovider.PolicyProvider, error) {
 	return &mocks.TestPolicyProvider{}, nil
 }
 
 // Checks the correct registered policy provider is invoked based on config
 func TestCreatePolicyProvidersFromConfig_BuiltInPolicyProviders_ReturnsExpected(t *testing.T) {
 	builtInPolicyProviders = map[string]PolicyFactory{
-		"test-policyprovider": &TestPolicyProviderFactory{},
+		"testpolicyprovider": &TestPolicyProviderFactory{},
 	}
 
 	configPolicyConfig := map[string]interface{}{

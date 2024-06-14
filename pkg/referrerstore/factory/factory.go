@@ -16,12 +16,12 @@ limitations under the License.
 package factory
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
 	"strings"
 
+	re "github.com/deislabs/ratify/errors"
 	pluginCommon "github.com/deislabs/ratify/pkg/common/plugin"
 	"github.com/deislabs/ratify/pkg/featureflag"
 	"github.com/deislabs/ratify/pkg/referrerstore"
@@ -50,15 +50,16 @@ func Register(name string, factory StoreFactory) {
 	builtInStores[name] = factory
 }
 
+// the first element of pluginBinDir will be used as the plugin directory
 func CreateStoreFromConfig(storeConfig config.StorePluginConfig, configVersion string, pluginBinDir []string) (referrerstore.ReferrerStore, error) {
 	storeName, ok := storeConfig[types.Name]
 	if !ok {
-		return nil, fmt.Errorf("failed to find store name in the stores config with key %s", "name")
+		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.ReferrerStore).WithDetail(fmt.Sprintf("failed to find store name in the stores config with key %s", types.Name))
 	}
 
 	storeNameStr := fmt.Sprintf("%s", storeName)
 	if strings.ContainsRune(storeNameStr, os.PathSeparator) {
-		return nil, fmt.Errorf("invalid plugin name for a store: %s", storeName)
+		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.ReferrerStore).WithDetail(fmt.Sprintf("invalid plugin name for a store: %s", storeName))
 	}
 
 	// if source is specified, download the plugin
@@ -66,13 +67,13 @@ func CreateStoreFromConfig(storeConfig config.StorePluginConfig, configVersion s
 		if featureflag.DynamicPlugins.Enabled {
 			source, err := pluginCommon.ParsePluginSource(source)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse plugin source: %w", err)
+				return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.ReferrerStore).WithDetail("failed to parse plugin source")
 			}
 
 			targetPath := path.Join(pluginBinDir[0], storeNameStr)
 			err = pluginCommon.DownloadPlugin(source, targetPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to download plugin: %w", err)
+				return nil, re.ErrorCodeDownloadPluginFailure.WithComponentType(re.ReferrerStore)
 			}
 			logrus.Infof("downloaded store plugin %s from %s to %s", storeNameStr, source.Artifact, targetPath)
 		} else {
@@ -83,9 +84,13 @@ func CreateStoreFromConfig(storeConfig config.StorePluginConfig, configVersion s
 	storeFactory, ok := builtInStores[storeNameStr]
 	if ok {
 		return storeFactory.Create(configVersion, storeConfig)
-	} else {
-		return plugin.NewStore(configVersion, storeConfig, pluginBinDir)
 	}
+
+	if _, err := pluginCommon.FindInPaths(storeNameStr, pluginBinDir); err != nil {
+		return nil, re.ErrorCodePluginNotFound.NewError(re.ReferrerStore, "", re.EmptyLink, err, "plugin not found", re.HideStackTrace)
+	}
+
+	return plugin.NewStore(configVersion, storeConfig, pluginBinDir)
 }
 
 // CreateStoresFromConfig creates a stores from the provided configuration
@@ -96,14 +101,14 @@ func CreateStoresFromConfig(storesConfig config.StoresConfig, defaultPluginPath 
 
 	err := validateStoresConfig(&storesConfig)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.ReferrerStore).WithError(err)
 	}
 
 	if len(storesConfig.Stores) == 0 {
-		return nil, errors.New("referrer store config should have at least one store")
+		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.ReferrerStore).WithDetail("referrer store config should have at least one store")
 	}
 
-	var stores []referrerstore.ReferrerStore
+	stores := make([]referrerstore.ReferrerStore, 0)
 
 	if len(storesConfig.PluginBinDirs) == 0 {
 		storesConfig.PluginBinDirs = []string{defaultPluginPath}
@@ -115,15 +120,14 @@ func CreateStoresFromConfig(storesConfig config.StoresConfig, defaultPluginPath 
 		store, err := CreateStoreFromConfig(storeConfig, storesConfig.Version, storesConfig.PluginBinDirs)
 		if err != nil {
 			return nil, err
-		} else {
-			stores = append(stores, store)
 		}
+		stores = append(stores, store)
 	}
 
 	return stores, nil
 }
 
-func validateStoresConfig(storesConfig *config.StoresConfig) error {
+func validateStoresConfig(_ *config.StoresConfig) error {
 	// TODO check for existence of plugin dirs
 	// TODO check if version is supported
 	return nil

@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 
+	re "github.com/deislabs/ratify/errors"
 	"github.com/deislabs/ratify/pkg/common"
 	pluginCommon "github.com/deislabs/ratify/pkg/common/plugin"
 	"github.com/deislabs/ratify/pkg/ocispecs"
@@ -35,6 +36,7 @@ import (
 // VerifierPlugin describes a verifier that is implemented by invoking the plugins
 type VerifierPlugin struct {
 	name             string
+	verifierType     string
 	artifactTypes    []string
 	nestedReferences []string
 	version          string
@@ -47,7 +49,11 @@ type VerifierPlugin struct {
 func NewVerifier(version string, verifierConfig config.VerifierConfig, pluginPaths []string) (verifier.ReferenceVerifier, error) {
 	verifierName, ok := verifierConfig[types.Name]
 	if !ok {
-		return nil, fmt.Errorf("failed to find verifier name in the verifier config with key %s", "name")
+		return nil, re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("failed to find verifier name in the verifier config with key: %s", types.Name))
+	}
+	verifierType := ""
+	if _, ok := verifierConfig[types.Type]; ok {
+		verifierType = fmt.Sprintf("%s", verifierConfig[types.Type])
 	}
 
 	var nestedReferences []string
@@ -66,6 +72,7 @@ func NewVerifier(version string, verifierConfig config.VerifierConfig, pluginPat
 
 	return &VerifierPlugin{
 		name:             fmt.Sprintf("%s", verifierName),
+		verifierType:     verifierType,
 		version:          version,
 		path:             pluginPaths,
 		rawConfig:        verifierConfig,
@@ -75,7 +82,7 @@ func NewVerifier(version string, verifierConfig config.VerifierConfig, pluginPat
 	}, nil
 }
 
-func (vp *VerifierPlugin) CanVerify(ctx context.Context, referenceDescriptor ocispecs.ReferenceDescriptor) bool {
+func (vp *VerifierPlugin) CanVerify(_ context.Context, referenceDescriptor ocispecs.ReferenceDescriptor) bool {
 	for _, at := range vp.artifactTypes {
 		if at == "*" || at == referenceDescriptor.ArtifactType {
 			return true
@@ -86,6 +93,10 @@ func (vp *VerifierPlugin) CanVerify(ctx context.Context, referenceDescriptor oci
 
 func (vp *VerifierPlugin) Name() string {
 	return vp.name
+}
+
+func (vp *VerifierPlugin) Type() string {
+	return vp.verifierType
 }
 
 func (vp *VerifierPlugin) Verify(ctx context.Context,
@@ -106,9 +117,13 @@ func (vp *VerifierPlugin) verifyReference(
 	subjectReference common.Reference,
 	referenceDescriptor ocispecs.ReferenceDescriptor,
 	referrerStoreConfig *rc.StoreConfig) (*verifier.VerifierResult, error) {
-	pluginPath, err := vp.executor.FindInPaths(vp.name, vp.path)
+	verifierTypeStr := vp.name
+	if vp.verifierType != "" {
+		verifierTypeStr = vp.verifierType
+	}
+	pluginPath, err := vp.executor.FindInPaths(verifierTypeStr, vp.path)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodePluginNotFound.NewError(re.Verifier, vp.name, re.EmptyLink, err, nil, re.HideStackTrace)
 	}
 
 	pluginArgs := VerifierPluginArgs{
@@ -125,12 +140,12 @@ func (vp *VerifierPlugin) verifyReference(
 
 	verifierConfigBytes, err := json.Marshal(inputConfig)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeConfigInvalid.NewError(re.Verifier, vp.name, re.EmptyLink, err, nil, re.HideStackTrace)
 	}
 
 	stdoutBytes, err := vp.executor.ExecutePlugin(ctx, pluginPath, nil, verifierConfigBytes, pluginArgs.AsEnviron())
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeVerifyPluginFailure.NewError(re.Verifier, vp.name, re.EmptyLink, err, nil, re.HideStackTrace)
 	}
 
 	result, err := types.GetVerifierResult(stdoutBytes)

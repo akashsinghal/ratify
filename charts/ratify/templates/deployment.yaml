@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "ratify.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ default 1 .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "ratify.selectorLabels" . | nindent 6 }}
@@ -14,7 +14,7 @@ spec:
     metadata:
       labels:
         {{- include "ratify.selectorLabels" . | nindent 8 }}
-        {{- if .Values.oras.authProviders.azureWorkloadIdentityEnabled }}
+        {{- if ne .Values.azureWorkloadIdentity.clientId "" }}
         azure.workload.identity/use: "true"
         {{- end }}
       annotations:
@@ -23,6 +23,13 @@ spec:
         prometheus.io/port: {{ .Values.instrumentation.metricsPort | quote }}
         {{- end }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if and .Values.provider.cache.enabled  (eq .Values.provider.cache.type "dapr") }}
+        dapr.io/enabled: "true"
+        dapr.io/app-id: {{ include "ratify.fullname" . }}
+        {{- if eq (lower .Values.logger.level) "debug" }}
+        dapr.io/enable-api-logging: "true"
+        {{- end }}
+        {{- end }}
     spec:
       {{- if or .Values.azureWorkloadIdentity.clientId .Values.serviceAccount.create .Values.serviceAccount.name }}
       serviceAccountName: {{ include "ratify.serviceAccountName" . }}
@@ -31,6 +38,14 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.healthPort }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.healthPort }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -55,18 +70,25 @@ spec:
             {{- if (lookup "v1" "Secret" .Release.Namespace "gatekeeper-webhook-server-cert") }}
             - --ca-cert-file=usr/local/tls/client-ca/ca.crt
             {{- end }}
-            - --cache-size={{ .Values.provider.cache.size }}
+            - --cache-enabled={{ .Values.provider.cache.enabled }}
+            - --cache-type={{ default "ristretto" .Values.provider.cache.type }}
+            - --cache-name={{ default "dapr-redis" .Values.provider.cache.name }}
+            - --cache-size={{ .Values.provider.cache.cacheSizeMb }}
             - --cache-ttl={{ .Values.provider.cache.ttl }}
             - --metrics-enabled={{ .Values.instrumentation.metricsEnabled }}
             - --metrics-type={{ .Values.instrumentation.metricsType }}
             - --metrics-port={{ .Values.instrumentation.metricsPort }}
+            - --health-port=:{{ .Values.healthPort }}
           ports:
             - containerPort: 6001
             {{- if .Values.instrumentation.metricsEnabled }}
             - containerPort: {{ required "You must provide .Values.instrumentation.metricsPort" .Values.instrumentation.metricsPort }}
             {{- end }}
+            - containerPort: {{ required "You must provide .Values.healthPort"  .Values.healthPort }}
+              name: healthz
+              protocol: TCP
           volumeMounts:             
-            {{- if .Values.cosign.enabled }}
+            {{- if and .Values.cosign.enabled .Values.cosign.key }}
             - mountPath: "/usr/local/ratify-certs/cosign"
               name: cosign-certs
               readOnly: true
@@ -88,9 +110,9 @@ spec:
               readOnly: true
             {{- end }}
           env:
-          {{- if .Values.logLevel }}
+          {{- if .Values.logger.level }}
             - name: RATIFY_LOG_LEVEL
-              value: {{ .Values.logLevel }}
+              value: {{ .Values.logger.level }}
           {{- end }}
           {{- if $dockerAuthMode }}
             - name: DOCKER_CONFIG
@@ -114,6 +136,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: RATIFY_NAME
+              value: {{ include "ratify.fullname" . }}
           {{- range $k, $v := .Values.featureFlags }}
             - name: {{ $k }}
               value: {{ $v | ternary 1 0 | quote }}
@@ -121,7 +145,7 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
-        {{- if .Values.cosign.enabled }}
+        {{- if and .Values.cosign.enabled .Values.cosign.key }}
         - name: cosign-certs
           secret:
             secretName: {{ include "ratify.fullname" . }}-cosign-certificate
@@ -144,11 +168,6 @@ spec:
         - name: tls
           secret:
             secretName: {{ include "ratify.fullname" . }}-tls
-            items:
-              - key: tls.key
-                path: tls.key
-              - key: tls.crt
-                path: tls.crt
         {{- if (lookup "v1" "Secret" .Release.Namespace "gatekeeper-webhook-server-cert") }}
         - name: client-ca-cert
           secret:
@@ -157,3 +176,8 @@ spec:
               - key: ca.crt
                 path: ca.crt
         {{- end }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+

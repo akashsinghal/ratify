@@ -17,12 +17,15 @@ package factory
 
 import (
 	"context"
+	"os"
 	"testing"
 
+	"github.com/deislabs/ratify/internal/constants"
 	"github.com/deislabs/ratify/pkg/common"
 	"github.com/deislabs/ratify/pkg/ocispecs"
 	"github.com/deislabs/ratify/pkg/referrerstore"
 
+	"github.com/deislabs/ratify/pkg/utils"
 	"github.com/deislabs/ratify/pkg/verifier"
 	"github.com/deislabs/ratify/pkg/verifier/config"
 	"github.com/deislabs/ratify/pkg/verifier/plugin"
@@ -34,17 +37,21 @@ type TestVerifier struct {
 type TestVerifierFactory struct{}
 
 func (s *TestVerifier) Name() string {
+	return "test-verifier-0"
+}
+
+func (s *TestVerifier) Type() string {
 	return "test-verifier"
 }
 
-func (s *TestVerifier) CanVerify(ctx context.Context, referenceDescriptor ocispecs.ReferenceDescriptor) bool {
+func (s *TestVerifier) CanVerify(_ context.Context, _ ocispecs.ReferenceDescriptor) bool {
 	return true
 }
 
-func (s *TestVerifier) Verify(ctx context.Context,
-	subjectReference common.Reference,
-	referenceDescriptor ocispecs.ReferenceDescriptor,
-	referrerStore referrerstore.ReferrerStore) (verifier.VerifierResult, error) {
+func (s *TestVerifier) Verify(_ context.Context,
+	_ common.Reference,
+	_ ocispecs.ReferenceDescriptor,
+	_ referrerstore.ReferrerStore) (verifier.VerifierResult, error) {
 	return verifier.VerifierResult{IsSuccess: false}, nil
 }
 
@@ -52,7 +59,7 @@ func (s *TestVerifier) GetNestedReferences() []string {
 	return []string{}
 }
 
-func (f *TestVerifierFactory) Create(version string, verifierConfig config.VerifierConfig, pluginDirectory string) (verifier.ReferenceVerifier, error) {
+func (f *TestVerifierFactory) Create(_ string, _ config.VerifierConfig, pluginDirectory string, _ string) (verifier.ReferenceVerifier, error) {
 	return &TestVerifier{verifierDirectory: pluginDirectory}, nil
 }
 
@@ -62,13 +69,14 @@ func TestCreateVerifiersFromConfig_BuiltInVerifiers_ReturnsExpected(t *testing.T
 	}
 
 	verifierConfig := map[string]interface{}{
-		"name": "test-verifier",
+		"name": "test-verifier-0",
+		"type": "test-verifier",
 	}
 	verifiersConfig := config.VerifiersConfig{
 		Verifiers: []config.VerifierConfig{verifierConfig},
 	}
 
-	verifiers, err := CreateVerifiersFromConfig(verifiersConfig, "test/dir")
+	verifiers, err := CreateVerifiersFromConfig(verifiersConfig, "test/dir", constants.EmptyNamespace)
 
 	if err != nil {
 		t.Fatalf("create verifiers failed with err %v", err)
@@ -78,8 +86,8 @@ func TestCreateVerifiersFromConfig_BuiltInVerifiers_ReturnsExpected(t *testing.T
 		t.Fatalf("expected to have %d verifiers, actual count %d", 1, len(verifiers))
 	}
 
-	if verifiers[0].Name() != "test-verifier" {
-		t.Fatalf("expected to create test verifier")
+	if nameResult := verifiers[0].Name(); nameResult != "test-verifier-0" {
+		t.Fatalf("expected to create test-verifier-0 for test case but got %v", nameResult)
 	}
 
 	if _, ok := verifiers[0].(*plugin.VerifierPlugin); ok {
@@ -96,14 +104,21 @@ func TestCreateVerifiersFromConfig_BuiltInVerifiers_ReturnsExpected(t *testing.T
 }
 
 func TestCreateVerifiersFromConfig_PluginVerifiers_ReturnsExpected(t *testing.T) {
+	dirPath, err := utils.CreatePlugin("sample")
+	if err != nil {
+		t.Fatalf("createPlugin() expected no error, actual %v", err)
+	}
+	defer os.RemoveAll(dirPath)
+
 	verifierConfig := map[string]interface{}{
-		"name": "plugin-verifier",
+		"name": "plugin-verifier-0",
+		"type": "sample",
 	}
 	verifiersConfig := config.VerifiersConfig{
 		Verifiers: []config.VerifierConfig{verifierConfig},
 	}
 
-	verifiers, err := CreateVerifiersFromConfig(verifiersConfig, "")
+	verifiers, err := CreateVerifiersFromConfig(verifiersConfig, dirPath, "")
 
 	if err != nil {
 		t.Fatalf("create verifiers failed with err %v", err)
@@ -113,8 +128,8 @@ func TestCreateVerifiersFromConfig_PluginVerifiers_ReturnsExpected(t *testing.T)
 		t.Fatalf("expected to have %d verifiers, actual count %d", 1, len(verifiers))
 	}
 
-	if verifiers[0].Name() != "plugin-verifier" {
-		t.Fatalf("expected to create plugin verifier")
+	if verifiers[0].Name() != "plugin-verifier-0" {
+		t.Fatalf("expected to create plugin-verifier-0")
 	}
 
 	if _, ok := verifiers[0].(*plugin.VerifierPlugin); !ok {

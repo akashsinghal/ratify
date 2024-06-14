@@ -24,20 +24,25 @@ import (
 )
 
 // VerifierResult describes the result of verifying a reference manifest for a subject
-type VerifierResult struct {
+type VerifierResult struct { //nolint:revive // ignore linter to have unique type name
 	Subject       string           `json:"subject,omitempty"`
 	IsSuccess     bool             `json:"isSuccess"`
 	Name          string           `json:"name,omitempty"`
+	Type          string           `json:"type,omitempty"`
 	Message       string           `json:"message,omitempty"`
 	Extensions    interface{}      `json:"extensions,omitempty"`
 	NestedResults []VerifierResult `json:"nestedResults,omitempty"`
 	ArtifactType  string           `json:"artifactType,omitempty"`
 }
 
-// ReferenceVerifier is an interface that defines methods to verify a reference for a subject
+// ReferenceVerifier is an interface that defines methods to verify a reference
+// for a subject by a verifier.
 type ReferenceVerifier interface {
 	// Name returns the name of the verifier
 	Name() string
+
+	// Type returns the type name of the verifier
+	Type() string
 
 	// CanVerify returns if the verifier can verify the given reference
 	CanVerify(ctx context.Context, referenceDescriptor ocispecs.ReferenceDescriptor) bool

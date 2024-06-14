@@ -1,8 +1,17 @@
-ARG BUILDPLATFORM="linux/amd64"
-ARG BUILDERIMAGE="golang:1.20"
-ARG BASEIMAGE="gcr.io/distroless/static:nonroot"
+# Copyright The Ratify Authors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 
-FROM --platform=$BUILDPLATFORM $BUILDERIMAGE as builder
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM --platform=$BUILDPLATFORM golang:1.21@sha256:a8edec58ba598e2f1259f4ec4ca1b06358468214225e73d7c841ab0980c12367 as builder
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -10,6 +19,10 @@ ARG TARGETARCH
 ARG TARGETVARIANT=""
 ARG LDFLAGS
 ARG GOPROXY
+ARG build_sbom
+ARG build_licensechecker
+ARG build_schemavalidator
+ARG build_vulnerabilityreport
 
 ENV CGO_ENABLED=0 \
     GOOS=${TARGETOS} \
@@ -21,13 +34,14 @@ WORKDIR /app
 
 COPY . .
 
-RUN go build -o /app/out/ /app/cmd/ratify 
-RUN go build -o /app/out/plugins/ /app/plugins/verifier/sbom
-RUN go build -o /app/out/plugins/ /app/plugins/verifier/cosign
-RUN go build -o /app/out/plugins/ /app/plugins/verifier/licensechecker
-RUN go build -o /app/out/plugins/ /app/plugins/verifier/schemavalidator
+RUN go build -ldflags "${LDFLAGS}" -o /app/out/ /app/cmd/ratify
+RUN mkdir /app/out/plugins
+RUN if [ "$build_sbom" = "true" ]; then go build -o /app/out/plugins/ /app/plugins/verifier/sbom; fi
+RUN if [ "$build_licensechecker" = "true" ]; then go build -o /app/out/plugins/ /app/plugins/verifier/licensechecker; fi
+RUN if [ "$build_schemavalidator" = "true" ]; then go build -o /app/out/plugins/ /app/plugins/verifier/schemavalidator; fi
+RUN if [ "$build_vulnerabilityreport" = "true" ]; then go build -o /app/out/plugins/ /app/plugins/verifier/vulnerabilityreport; fi
 
-FROM $BASEIMAGE
+FROM gcr.io/distroless/static:nonroot@sha256:e9ac71e2b8e279a8372741b7a0293afda17650d926900233ec3a7b2b7c22a246
 LABEL org.opencontainers.image.source https://github.com/deislabs/ratify
 
 ARG RATIFY_FOLDER=$HOME/.ratify/

@@ -21,6 +21,8 @@ import (
 	"fmt"
 
 	"github.com/deislabs/ratify/config"
+	"github.com/deislabs/ratify/internal/constants"
+	"github.com/deislabs/ratify/internal/logger"
 	e "github.com/deislabs/ratify/pkg/executor"
 	ef "github.com/deislabs/ratify/pkg/executor/core"
 	pf "github.com/deislabs/ratify/pkg/policyprovider/factory"
@@ -43,7 +45,7 @@ type verifyCmdOptions struct {
 	silentMode     bool
 }
 
-func NewCmdVerify(argv ...string) *cobra.Command {
+func NewCmdVerify(_ ...string) *cobra.Command {
 	var opts verifyCmdOptions
 
 	cmd := &cobra.Command{
@@ -100,13 +102,17 @@ func verify(opts verifyCmdOptions) error {
 		return err
 	}
 
+	if err := logger.InitLogConfig(cf.LoggerConfig); err != nil {
+		return err
+	}
+
 	stores, err := sf.CreateStoresFromConfig(cf.StoresConfig, config.GetDefaultPluginPath())
 
 	if err != nil {
 		return err
 	}
 
-	verifiers, err := vf.CreateVerifiersFromConfig(cf.VerifiersConfig, config.GetDefaultPluginPath())
+	verifiers, err := vf.CreateVerifiersFromConfig(cf.VerifiersConfig, config.GetDefaultPluginPath(), constants.EmptyNamespace)
 
 	if err != nil {
 		return err

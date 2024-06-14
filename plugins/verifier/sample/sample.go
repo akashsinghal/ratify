@@ -18,8 +18,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/deislabs/ratify/pkg/common"
+	"github.com/deislabs/ratify/pkg/common/plugin/logger"
 	"github.com/deislabs/ratify/pkg/ocispecs"
 	"github.com/deislabs/ratify/pkg/referrerstore"
 	"github.com/deislabs/ratify/pkg/verifier"
@@ -28,6 +30,7 @@ import (
 
 type PluginConfig struct {
 	Name string `json:"name"`
+	Type string `json:"type"`
 	// config specific to the plugin
 }
 
@@ -36,7 +39,19 @@ type PluginInputConfig struct {
 }
 
 func main() {
+	// create a plugin logger
+	pluginlogger := logger.NewLogger()
+
+	// output info and Debug to stderr
+	pluginlogger.Info("initialized plugin")
+	pluginlogger.Debugf("plugin %s %s", "sample", "1.0.0")
+
 	skel.PluginMain("sample", "1.0.0", VerifyReference, []string{"1.0.0"})
+
+	// By default, the pluginlogger writes to stderr. To change the output, use SetOutput
+	pluginlogger.SetOutput(os.Stdout)
+	// output warning to stdout
+	pluginlogger.Warn("example warning message...")
 }
 
 func parseInput(stdin []byte) (*PluginConfig, error) {
@@ -49,14 +64,19 @@ func parseInput(stdin []byte) (*PluginConfig, error) {
 	return &conf.Config, nil
 }
 
-func VerifyReference(args *skel.CmdArgs, subjectReference common.Reference, referenceDescriptor ocispecs.ReferenceDescriptor, referrerStore referrerstore.ReferrerStore) (*verifier.VerifierResult, error) {
+func VerifyReference(args *skel.CmdArgs, _ common.Reference, referenceDescriptor ocispecs.ReferenceDescriptor, _ referrerstore.ReferrerStore) (*verifier.VerifierResult, error) {
 	input, err := parseInput(args.StdinData)
 	if err != nil {
 		return nil, err
 	}
+	verifierType := input.Name
+	if input.Type != "" {
+		verifierType = input.Type
+	}
 
 	return &verifier.VerifierResult{
 		Name:      input.Name,
+		Type:      verifierType,
 		IsSuccess: referenceDescriptor.Size > 0,
 		Message:   "Sample verification success",
 	}, nil
