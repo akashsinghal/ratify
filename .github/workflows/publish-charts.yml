@@ -1,8 +1,8 @@
 name: publishChart
-# on:
-#   push:
-#     tags:
-#       - v*
+on:
+  push:
+    tags:
+      - v454
 
 permissions: read-all
 
