@@ -55,12 +55,6 @@ jobs:
 
         checksum_file=$(echo "$ARTIFACTS" | jq -r '.[] | select (.type=="Checksum") | .path')
         echo "hashes=$(cat $checksum_file | base64 -w0)" >> "$GITHUB_OUTPUT"
-    
-    - name: Generate SLSA Provenance
-      uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@5a775b367a56d5bd118a224a811bba288150a563 # v2.0.0
-      with:
-        base64-subjects: "${{ steps.binary.outputs.hashes }}"
-        upload-assets: true
 
     - name: Generate SBOM
       run: |
@@ -73,3 +67,12 @@ jobs:
       with:
         name: SBOM SPDX files
         path: _manifest/spdx_2.2/**
+  provenance:
+    needs: [build]
+    permissions:
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@5a775b367a56d5bd118a224a811bba288150a563 # v2.0.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      upload-assets: true
