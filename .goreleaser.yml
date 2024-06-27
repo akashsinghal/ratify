@@ -74,6 +74,10 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
 signs:
   - cmd: cosign
     certificate: "${artifact}.pem"
