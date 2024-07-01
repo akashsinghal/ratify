@@ -77,6 +77,19 @@ func TrimSpaceAndToLower(input string) string {
 	return strings.ToLower(strings.TrimSpace(input))
 }
 
+func ParseSubjectReferenceWithDigest(subRef string, digest digest.Digest) (string, error) {
+	parseResult, err := reference.ParseDockerRef(subRef)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse subject reference: %w", err)
+	}
+
+	canonicalReference, err := reference.WithDigest(parseResult, digest)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse subject reference: %w", err)
+	}
+	return canonicalReference.String(), nil
+}
+
 // ParseRequestKey parses key string to a structured RequestKey object.
 // Example 1:
 // key: [gatekeeper-system]docker.io/test/hello:v1

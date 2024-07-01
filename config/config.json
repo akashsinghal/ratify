@@ -25,7 +25,7 @@
                 "name": "notation",
                 "artifactTypes": "application/vnd.cncf.notary.signature",
                 "verificationCerts": [
-                    "/usr/local/ratify-certs/notation/truststore"
+                    "/home/devuser/code/ratify/notary.crt"
                 ],
                 "trustPolicyDoc": {
                     "version": "1.0",

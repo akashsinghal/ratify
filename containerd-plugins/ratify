@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+name=$2
+digest=$4
+ratifyOutput=$(/home/devuser/code/ratify/bin/ratify verify -c /home/devuser/code/ratify/config/config.json -s $name -d $digest)
+isSuccess=$(echo $ratifyOutput | jq .isSuccess)
+echo $ratifyOutput | jq . 
+if [ "$isSuccess" = "true" ]; then
+    echo "ratify verification succeeded"
+    exit 0
+fi
+exit 1
