@@ -15,8 +15,13 @@ jobs:
       packages: write
       contents: read
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        with:
+          egress-policy: audit
+
       - name: Checkout
-        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
       - name: prepare
         id: prepare
         run: |
@@ -36,7 +41,7 @@ jobs:
         run: |
           echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
       - name: docker login
-        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -44,13 +49,13 @@ jobs:
       - name: docker build ratify-crds
         run: |
           docker buildx create --use
-          docker buildx build --build-arg KUBE_VERSION="1.27.7" -f crd.Dockerfile --platform linux/amd64,linux/arm64,linux/arm/v7 --label org.opencontainers.image.revision=${{ github.sha }} -t ${{ steps.prepare.outputs.crdref }} --push ./charts/ratify/crds
+          docker buildx build --build-arg KUBE_VERSION="1.29.2" -f crd.Dockerfile --platform linux/amd64,linux/arm64,linux/arm/v7 --label org.opencontainers.image.revision=${{ github.sha }} -t ${{ steps.prepare.outputs.crdref }} --push ./charts/ratify/crds
       - name: docker build ratify base
         run: |
           docker buildx create --use         
           docker buildx build -f ./httpserver/Dockerfile \
             --platform linux/amd64,linux/arm64,linux/arm/v7 \
-            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+            --build-arg LDFLAGS="-X github.com/ratify-project/ratify/internal/version.Version=$(TAG)" \
             --label org.opencontainers.image.revision=${{ github.sha }} \
             -t ${{ steps.prepare.outputs.baseref }} \
             --push .
@@ -63,7 +68,7 @@ jobs:
             --build-arg build_licensechecker=true \
             --build-arg build_schemavalidator=true \
             --build-arg build_vulnerabilityreport=true \
-            --build-arg LDFLAGS="-X github.com/deislabs/ratify/internal/version.Version=$(TAG)" \
+            --build-arg LDFLAGS="-X github.com/ratify-project/ratify/internal/version.Version=$(TAG)" \
             --label org.opencontainers.image.revision=${{ github.sha }} \
             -t ${{ steps.prepare.outputs.ref }} \
             --push .

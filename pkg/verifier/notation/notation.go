@@ -22,32 +22,34 @@ import (
 	paths "path/filepath"
 	"strings"
 
-	ratifyconfig "github.com/deislabs/ratify/config"
-	re "github.com/deislabs/ratify/errors"
-	"github.com/deislabs/ratify/internal/constants"
-	"github.com/deislabs/ratify/internal/logger"
-	"github.com/deislabs/ratify/pkg/common"
-	"github.com/deislabs/ratify/pkg/homedir"
+	ratifyconfig "github.com/ratify-project/ratify/config"
+	re "github.com/ratify-project/ratify/errors"
+	"github.com/ratify-project/ratify/internal/logger"
+	"github.com/ratify-project/ratify/pkg/common"
+	"github.com/ratify-project/ratify/pkg/homedir"
 
-	"github.com/deislabs/ratify/pkg/ocispecs"
-	"github.com/deislabs/ratify/pkg/referrerstore"
-	"github.com/deislabs/ratify/pkg/verifier"
-	"github.com/deislabs/ratify/pkg/verifier/config"
-	"github.com/deislabs/ratify/pkg/verifier/factory"
-	"github.com/deislabs/ratify/pkg/verifier/types"
 	"github.com/notaryproject/notation-go/log"
+	"github.com/ratify-project/ratify/pkg/ocispecs"
+	"github.com/ratify-project/ratify/pkg/referrerstore"
+	"github.com/ratify-project/ratify/pkg/verifier"
+	"github.com/ratify-project/ratify/pkg/verifier/config"
+	"github.com/ratify-project/ratify/pkg/verifier/factory"
+	"github.com/ratify-project/ratify/pkg/verifier/types"
 
 	_ "github.com/notaryproject/notation-core-go/signature/cose" // register COSE signature
 	_ "github.com/notaryproject/notation-core-go/signature/jws"  // register JWS signature
 	"github.com/notaryproject/notation-go"
 	notationVerifier "github.com/notaryproject/notation-go/verifier"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
+	"github.com/notaryproject/notation-go/verifier/truststore"
 	oci "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const (
-	verifierType    = "notation"
-	defaultCertPath = "ratify-certs/notation/truststore"
+	verifierType                      = "notation"
+	defaultCertPath                   = "ratify-certs/notation/truststore"
+	trustStoreTypeCA                  = string(truststore.TypeCA)
+	trustStoreTypeypeSigningAuthority = string(truststore.TypeSigningAuthority)
 )
 
 // NotationPluginVerifierConfig describes the configuration of notation verifier
@@ -57,8 +59,21 @@ type NotationPluginVerifierConfig struct { //nolint:revive // ignore linter to h
 
 	// VerificationCerts is array of directories containing certificates.
 	VerificationCerts []string `json:"verificationCerts"`
-	// VerificationCerts is map defining which keyvault certificates belong to which trust store
-	VerificationCertStores map[string][]string `json:"verificationCertStores"`
+	// VerificationCertStores defines a collection of Notary Project Trust Stores.
+	// VerificationCertStores accepts new format map[string]map[string][]string
+	// {
+	//   "ca": {
+	//     "certs": {"kv1", "kv2"},
+	//   },
+	//   "signingauthority": {
+	//     "certs": {"kv3"}
+	//   },
+	// }
+	// VerificationCertStores accepts legacy format map[string][]string as well.
+	// {
+	//   "certs": {"kv1", "kv2"},
+	// },
+	VerificationCertStores verificationCertStores `json:"verificationCertStores"`
 	// TrustPolicyDoc represents a trustpolicy.json document. Reference: https://pkg.go.dev/github.com/notaryproject/notation-go@v0.12.0-beta.1.0.20221125022016-ab113ebd2a6c/verifier/trustpolicy#Document
 	TrustPolicyDoc trustpolicy.Document `json:"trustPolicyDoc"`
 }
@@ -169,11 +184,10 @@ func (v *notationPluginVerifier) Verify(ctx context.Context,
 }
 
 func getVerifierService(conf *NotationPluginVerifierConfig, pluginDirectory string) (notation.Verifier, error) {
-	store := &trustStore{
-		certPaths:  conf.VerificationCerts,
-		certStores: conf.VerificationCertStores,
+	store, err := newTrustStore(conf.VerificationCerts, conf.VerificationCertStores)
+	if err != nil {
+		return nil, err
 	}
-
 	return notationVerifier.New(&conf.TrustPolicyDoc, store, NewRatifyPluginManager(pluginDirectory))
 }
 
@@ -187,7 +201,7 @@ func (v *notationPluginVerifier) verifySignature(ctx context.Context, subjectRef
 	return (*v.notationVerifier).Verify(ctx, subjectDesc, refBlob, opts)
 }
 
-func parseVerifierConfig(verifierConfig config.VerifierConfig, namespace string) (*NotationPluginVerifierConfig, error) {
+func parseVerifierConfig(verifierConfig config.VerifierConfig, _ string) (*NotationPluginVerifierConfig, error) {
 	verifierName := verifierConfig[types.Name].(string)
 	conf := &NotationPluginVerifierConfig{}
 
@@ -200,17 +214,13 @@ func parseVerifierConfig(verifierConfig config.VerifierConfig, namespace string)
 		return nil, re.ErrorCodeConfigInvalid.NewError(re.Verifier, verifierName, re.EmptyLink, err, fmt.Sprintf("failed to unmarshal to notationPluginVerifierConfig from: %+v.", verifierConfig), re.HideStackTrace)
 	}
 
-	// append namespace to uniquely identify the certstore
+	defaultCertsDir := paths.Join(homedir.Get(), ratifyconfig.ConfigFileDir, defaultCertPath)
+	conf.VerificationCerts = append(conf.VerificationCerts, defaultCertsDir)
 	if len(conf.VerificationCertStores) > 0 {
-		logger.GetLogger(context.Background(), logOpt).Debugf("VerificationCertStores is not empty, will append namespace %v to certificate store if resource does not already contain a namespace", namespace)
-		conf.VerificationCertStores, err = prependNamespaceToCertStore(conf.VerificationCertStores, namespace)
-		if err != nil {
+		if err := normalizeVerificationCertsStores(conf); err != nil {
 			return nil, err
 		}
 	}
-
-	defaultCertsDir := paths.Join(homedir.Get(), ratifyconfig.ConfigFileDir, defaultCertPath)
-	conf.VerificationCerts = append(conf.VerificationCerts, defaultCertsDir)
 	return conf, nil
 }
 
@@ -219,23 +229,24 @@ func (v *notationPluginVerifier) GetNestedReferences() []string {
 	return []string{}
 }
 
-// append namespace to certStore so they are uniquely identifiable
-func prependNamespaceToCertStore(verificationCertStore map[string][]string, namespace string) (map[string][]string, error) {
-	if namespace == "" {
-		return nil, re.ErrorCodeEnvNotSet.WithComponentType(re.Verifier).WithDetail("failure to parse VerificationCertStores, namespace for VerificationCertStores must be provided")
-	}
-
-	for _, certStores := range verificationCertStore {
-		for i, certstore := range certStores {
-			if !isNamespacedNamed(certstore) {
-				certStores[i] = namespace + constants.NamespaceSeperator + certstore
-			}
+// normalizeVerificationCertsStores normalize the structure does not match the latest spec
+func normalizeVerificationCertsStores(conf *NotationPluginVerifierConfig) error {
+	isCertStoresByType, isLegacyCertStore := false, false
+	for key := range conf.VerificationCertStores {
+		if key != trustStoreTypeCA && key != trustStoreTypeypeSigningAuthority {
+			isLegacyCertStore = true
+			logger.GetLogger(context.Background(), logOpt).Debugf("Get VerificationCertStores in legacy format")
+		} else {
+			isCertStoresByType = true
 		}
 	}
-	return verificationCertStore, nil
-}
-
-// return true if string looks like a K8s namespaced resource. e.g. namespace/name
-func isNamespacedNamed(name string) bool {
-	return strings.Contains(name, constants.NamespaceSeperator)
+	if isCertStoresByType && isLegacyCertStore {
+		return re.ErrorCodeConfigInvalid.NewError(re.Verifier, conf.Name, re.EmptyLink, nil, "both old VerificationCertStores and new VerificationCertStores are provided, please provide only one", re.HideStackTrace)
+	} else if !isCertStoresByType && isLegacyCertStore {
+		// normalize <store>:<certs> to ca:<store><certs> if no store type is provided
+		conf.VerificationCertStores = verificationCertStores{
+			trustStoreTypeCA: conf.VerificationCertStores,
+		}
+	}
+	return nil
 }

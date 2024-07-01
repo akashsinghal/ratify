@@ -22,9 +22,10 @@ import (
 	"time"
 
 	logstash "github.com/bshuster-repo/logrus-logstash-hook"
-	re "github.com/deislabs/ratify/errors"
 	dcontext "github.com/docker/distribution/context"
 	"github.com/google/uuid"
+	re "github.com/ratify-project/ratify/errors"
+	icontext "github.com/ratify-project/ratify/internal/context"
 	"github.com/sirupsen/logrus"
 )
 
@@ -66,6 +67,8 @@ const (
 	Cache componentType = "cache"
 	// CertProvider is the component type for certificate provider.
 	CertProvider componentType = "certificateProvider"
+	// KeyManagementProvider is the component type for key management provider.
+	KeyManagementProvider componentType = "keyManagementProvider"
 	// AuthProvider is the component type for auth provider.
 	AuthProvider componentType = "authProvider"
 	// PolicyProvider is the component type for policy provider.
@@ -91,6 +94,7 @@ func InitContext(ctx context.Context, r *http.Request) context.Context {
 
 // GetLogger returns a logger with provided values.
 func GetLogger(ctx context.Context, opt Option) dcontext.Logger {
+	ctx = dcontext.WithLogger(ctx, dcontext.GetLogger(ctx, icontext.ContextKeyNamespace))
 	ctx = context.WithValue(ctx, ContextKeyComponentType, opt.ComponentType)
 	return dcontext.GetLogger(ctx, ContextKeyComponentType)
 }
