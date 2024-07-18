@@ -2,7 +2,7 @@ name: publishChart
 on:
   push:
     tags:
-      - v*
+      - v21341*
 
 permissions: read-all
 

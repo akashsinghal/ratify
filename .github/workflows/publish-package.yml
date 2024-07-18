@@ -3,7 +3,7 @@ name: publish-ghcr
 on:
   push:
     tags:
-      - v*
+      - v234*
   workflow_dispatch:
 
 permissions: read-all
