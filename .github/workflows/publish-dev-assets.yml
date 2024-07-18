@@ -111,23 +111,6 @@ jobs:
             -t ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }} \
             -t ${{ steps.prepare.outputs.ref }} \
             --push .
-      - name: Sign with Notation
-        uses: notaryproject/notation-action/sign@104aa999103172f827373af8ac14dde7aa6d28f1 # v1.1.0
-        with:
-          plugin_name: azure-kv
-          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
-          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
-          key_id: ${{ env.AZURE_KV_KEY_ID }}
-          target_artifact_reference: |-
-            ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
-            ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
-            ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
-          signature_format: cose
-      - name: Sign with Cosign
-        run: |
-          cosign sign --yes ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
-          cosign sign --yes ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
-          cosign sign --yes ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
       - name: replace version
         run: |
           sed -i '/^  repository:/c\  repository: ghcr.io/ratify-project/ratify-dev' charts/ratify/values.yaml
@@ -141,6 +124,27 @@ jobs:
         run: |
           helm push ratify-${{ steps.prepare.outputs.semversion }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
           helm push ratify-${{ steps.prepare.outputs.semversionrolling }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
+      - name: Sign with Notation
+        uses: notaryproject/notation-action/sign@104aa999103172f827373af8ac14dde7aa6d28f1 # v1.1.0
+        with:
+          plugin_name: azure-kv
+          plugin_url: ${{ env.AZURE_KV_PLUGIN_URL }}
+          plugin_checksum: ${{ env.AZURE_KV_CHECKSUM }}
+          key_id: ${{ env.AZURE_KV_KEY_ID }}
+          target_artifact_reference: |-
+            ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
+          signature_format: cose
+      - name: Sign with Cosign
+        run: |
+          cosign sign --yes ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+          cosign sign --yes ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
       - name: clear
         if: always()
         run: |
