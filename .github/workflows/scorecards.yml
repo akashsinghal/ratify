@@ -3,15 +3,17 @@ on:
   branch_protection_rule:
   schedule:
     # Weekly on Saturdays.
-    - cron: '30 1 * * 6'
+    - cron: "30 1 * * 6"
   push:
     branches:
       - main
       - dev
+      - release-*
   pull_request:
     branches:
       - dev
       - main
+      - release-*
   workflow_dispatch:
 
 permissions: read-all
@@ -25,20 +27,20 @@ jobs:
       id-token: write
       actions: read
       contents: read
-    
+
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7 # v2.10.1
         with:
           egress-policy: audit
 
       - name: "Checkout code"
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # tag=3.0.2
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # tag=3.0.2
         with:
           persist-credentials: false
 
       - name: "Run analysis"
-        uses: ossf/scorecard-action@dc50aa9510b46c811795eb24b2f1ba02a914e534 # tag=v2.3.3
+        uses: ossf/scorecard-action@62b2cac7ed8198b15735ed49ab1e5cf35480ba46 # tag=v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -46,13 +48,13 @@ jobs:
           publish_results: true
 
       - name: "Upload artifact"
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # tag=v4.3.3
+        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # tag=v4.4.1
         with:
           name: SARIF file
           path: results.sarif
           retention-days: 5
-      
+
       - name: "Upload to code-scanning"
-        uses: github/codeql-action/upload-sarif@23acc5c183826b7a8a97bce3cecc52db901f8251 # tag=v3.25.10
+        uses: github/codeql-action/upload-sarif@c36620d31ac7c881962c3d9dd939c40ec9434f2b # tag=v3.26.12
         with:
           sarif_file: results.sarif

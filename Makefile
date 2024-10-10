@@ -28,10 +28,10 @@ LDFLAGS += -X $(GO_PKG)/internal/version.GitTag=$(GIT_TAG)
 KIND_VERSION ?= 0.22.0
 KUBERNETES_VERSION ?= 1.29.2
 KIND_KUBERNETES_VERSION ?= 1.29.2
-GATEKEEPER_VERSION ?= 3.16.0
+GATEKEEPER_VERSION ?= 3.17.0
 DAPR_VERSION ?= 1.12.5
 COSIGN_VERSION ?= 2.2.3
-NOTATION_VERSION ?= 1.1.0
+NOTATION_VERSION ?= 1.2.0
 ORAS_VERSION ?= 1.1.0
 
 HELM_VERSION ?= 3.14.2
@@ -55,6 +55,8 @@ TRIVY_VERSION ?= 0.49.1
 
 GATEKEEPER_NAMESPACE = gatekeeper-system
 RATIFY_NAME = ratify
+
+TIMESTAMP_URL = http://timestamp.digicert.com
 
 # Local Registry Setup
 LOCAL_REGISTRY_IMAGE ?= ghcr.io/project-zot/zot-linux-amd64:v2.0.2
@@ -98,6 +100,7 @@ install:
 ratify-config:
 	cp ./test/bats/tests/config/* ${INSTALL_DIR}
 	cp ./test/bats/tests/certificates/wabbit-networks.io.crt ${INSTALL_DIR}/ratify-certs/notation/wabbit-networks.io.crt
+	cp ./test/bats/tests/certificates/tsarootca.cer ${INSTALL_DIR}/ratify-certs/notation/tsarootca.cer
 	cp ./test/bats/tests/certificates/cosign.pub ${INSTALL_DIR}/ratify-certs/cosign/cosign.pub
 	cp -r ./test/bats/tests/schemas/ ${INSTALL_DIR}
 	
@@ -295,10 +298,16 @@ e2e-notation-setup:
 	${GITHUB_WORKSPACE}/bin/oras cp --from-oci-layout .staging/notation/notation.tar:v0 ${TEST_REGISTRY}/notation:unsigned
 	rm .staging/notation/notation.tar
 
+	printf 'FROM ${ALPINE_IMAGE}\nCMD ["echo", "notation tsa signed image"]' > .staging/notation/Dockerfile
+	docker buildx create --use
+	docker buildx build --output type=oci,dest=.staging/notation/notation.tar -t notation:v0 .staging/notation
+	${GITHUB_WORKSPACE}/bin/oras cp --from-oci-layout .staging/notation/notation.tar:v0 ${TEST_REGISTRY}/notation:tsa
+	rm .staging/notation/notation.tar
+	
 	rm -rf ~/.config/notation
 	.staging/notation/notation cert generate-test --default "ratify-bats-test"
-
 	NOTATION_EXPERIMENTAL=1 .staging/notation/notation sign --allow-referrers-api -u ${TEST_REGISTRY_USERNAME} -p ${TEST_REGISTRY_PASSWORD} ${TEST_REGISTRY}/notation@`${GITHUB_WORKSPACE}/bin/oras manifest fetch ${TEST_REGISTRY}/notation:signed --descriptor | jq .digest | xargs`
+	NOTATION_EXPERIMENTAL=1 .staging/notation/notation sign --timestamp-url ${TIMESTAMP_URL} --timestamp-root-cert ./test/bats/tests/certificates/tsarootca.cer --allow-referrers-api -u ${TEST_REGISTRY_USERNAME} -p ${TEST_REGISTRY_PASSWORD} ${TEST_REGISTRY}/notation@`${GITHUB_WORKSPACE}/bin/oras manifest fetch ${TEST_REGISTRY}/notation:tsa --descriptor | jq .digest | xargs`
 	NOTATION_EXPERIMENTAL=1 .staging/notation/notation sign --allow-referrers-api -u ${TEST_REGISTRY_USERNAME} -p ${TEST_REGISTRY_PASSWORD} ${TEST_REGISTRY}/all@`${GITHUB_WORKSPACE}/bin/oras manifest fetch ${TEST_REGISTRY}/all:v0 --descriptor | jq .digest | xargs`
 
 e2e-notation-leaf-cert-setup:
@@ -680,9 +689,10 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen conversion-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations. Also generate conversions between structs of different API versions.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 	$(CONVERSION_GEN) \
-        --input-dirs "./api/v1beta1,./api/v1alpha1" \
         --go-header-file "./hack/boilerplate.go.txt" \
-        --output-file-base "zz_generated.conversion"
+        --output-file "zz_generated.conversion.go" \
+		./api/v1beta1 ./api/v1alpha1
+
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -730,8 +740,8 @@ CONVERSION_GEN ?= $(LOCALBIN)/conversion-gen
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v3.8.7
-CONTROLLER_TOOLS_VERSION ?= v0.9.2
-CONVERSION_TOOLS_VERSION ?= v0.26.1
+CONTROLLER_TOOLS_VERSION ?= v0.15.0
+CONVERSION_TOOLS_VERSION ?= v0.30.2
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize

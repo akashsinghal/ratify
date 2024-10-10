@@ -1,7 +1,7 @@
 image:
   repository: ghcr.io/ratify-project/ratify
   crdRepository: ghcr.io/ratify-project/ratify-crds
-  tag: v1.2.0
+  tag: v1.3.0
   pullPolicy: IfNotPresent
 
 nameOverride: ""
@@ -11,6 +11,9 @@ affinity: {}
 tolerations: []
 notationCerts: []
 cosignKeys: []
+
+notation:
+  enabled: true
 
 cosign:
   enabled: true
@@ -50,7 +53,7 @@ serviceAccount:
   create: true
   name: ratify-admin
 gatekeeper:
-  version: "3.16.0"
+  version: "3.17.0"
   namespace: # default is gatekeeper-system
 instrumentation:
   metricsEnabled: true
@@ -73,6 +76,7 @@ azurekeyvault:
   tenantId:
   certificates: []
   keys: []
+  refreshInterval:
 
 oras:
   useHttp: false
