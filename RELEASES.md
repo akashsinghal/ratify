@@ -48,7 +48,8 @@ Applicable fixes, including security fixes, may be backported to supported relea
 When a minor release is required, the release commits should be merged with the `main` branch when ready.
 
 * Alpha and Beta releases will be cut from the main branch.
-* For RC and stable releases, a new branch `release-X.Y` will be created from `main`. Required changes for the minor release should be PRed to the `dev`  branch, the change will then be cherry picked to `release-X.Y` from `main`.S
+* For RC and stable releases, a new branch `release-X.Y` will be created from `main`.
+* Required changes for the minor release should be PRed to the `dev` branch, the change will then be cherry picked to `release-X.Y` from `main`.
 
 ### Major releases
 
@@ -56,7 +57,10 @@ When a major release is required, the release commits should be merged with the 
 
 ### Tag and Release
 
-**X.Y.Z** refers to the version (git tag) of Ratify that is released. Prepare the release with a [PR](https://github.com/ratify-project/ratify/pull/1031/files) to update the chart value. When the `release-X.Y` branch is ready, a tag **X.Y.Z** should be pushed. e.g. `git tag v1.1.1` and `git push --tags`.  This will trigger a [Goreleaser](https://goreleaser.com/) action that will build the binaries and creates a [GitHub release](https://help.github.com/articles/creating-releases/):
+**X.Y.Z** refers to the version (git tag) of Ratify that is released.
+
+1. Prepare the release with a [PR](https://github.com/ratify-project/ratify/pull/1801/files) to update the chart value.
+2. When the `release-X.Y` branch is ready, a tag **X.Y.Z** should be pushed. e.g. `git tag v1.1.1` and `git push --tags`. This will trigger a [Goreleaser](https://goreleaser.com/) action that will build the binaries and creates a [GitHub release](https://help.github.com/articles/creating-releases/):
 
 * The release will be marked as a draft to allow an final editing before publishing.
 * The release notes and other fields can edited after the action completes.  The description can be in Markdown.
@@ -78,7 +82,7 @@ For example, if Gatekeeper _supported_ versions are v3.13 and v3.14, and Kuberne
 
 ## Post Release Activity
 
-After a successful release, please manually trigger [quick start action](.github/quick-start.yml) to validate the quick start test is passing. Validate in the run logs that the version of ratify matches the latest released version.
+After a successful release, please prepare a [PR](https://github.com/ratify-project/ratify/pull/1805/files) to update the chart value in `dev` branch. After PR gets merged, manually trigger [quick start action](.github/quick-start.yml) to validate the quick start test is passing. Validate in the run logs that the version of ratify matches the latest released version.
 
 ### Weekly Dev Release
 
@@ -88,13 +92,13 @@ After a successful release, please manually trigger [quick start action](.github
 * Contributors MUST select the `Helm Chart Change` option under the `Type of Change` section if there is ANY update to the helm chart that is required for proposed changes in PR.
 * Maintainers MUST manually trigger the "Publish Package" workflow after merging any PR that indicates `Helm Chart Change`
   * Go to the `Actions` tab for the Ratify repository
-  * Select `publish-ghcr` option from list of workflows on left pane
+  * Select `publish-dev-assets` option from list of workflows on left pane
   * Select the `Run workflow` drop down on the right side above the list of action runs
-  * Choose `Branch: main`
+  * Choose `Branch: dev`
   * Select `Run workflow`
 * Process to Request an off-schedule dev build be published
   * Submit a new feature request issue prefixed with `[Dev Build Request]`
-  * In the the `What this PR does / why we need it` section, briefly explain why an off schedule build is needed
+  * In the the `What would you like to be added?` section, briefly explain why an off schedule build is needed
   * Once issue is created, post in the `#ratify` slack channel and tag the maintainers
   * Maintainers should acknowledge request by approving/denying request as a follow up comment
 

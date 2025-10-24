@@ -19,11 +19,15 @@ spec:
     authProvider:
       name: azureWorkloadIdentity
       clientID: {{ .Values.azureWorkloadIdentity.clientId }}
+      endpoints:
+        {{- toYaml .Values.oras.authProviders.azureContainerRegistryEndpoints | nindent 8 }}
     {{- end }}
     {{- if .Values.oras.authProviders.azureManagedIdentityEnabled }}
     authProvider:
       name: azureManagedIdentity
       clientID: {{ .Values.azureManagedIdentity.clientId }}
+      endpoints: 
+        {{- toYaml .Values.oras.authProviders.azureContainerRegistryEndpoints | nindent 8 }}
     {{- end }}
     {{- if .Values.oras.authProviders.k8secretsEnabled }}
     authProvider:
@@ -33,6 +37,13 @@ spec:
     {{- if .Values.oras.authProviders.awsEcrBasicEnabled }}
     authProvider:
       name: awsEcrBasic
+    {{- end }}
+    {{- if .Values.oras.authProviders.alibabacloudAcrBasicEnabled }}
+    authProvider:
+      name: alibabacloudAcrBasic
+      defaultInstanceId: {{ .Values.alibabacloudAcrConfig.defaultInstanceId }}
+      acrInstancesConfig:
+        {{- toYaml .Values.alibabacloudAcrConfig.acrInstancesConfig | nindent 8 }}
     {{- end }}
     {{- if .Values.oras.cache.enabled }}
     cacheEnabled: true

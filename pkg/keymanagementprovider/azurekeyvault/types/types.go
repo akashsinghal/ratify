@@ -25,6 +25,8 @@ const (
 	StatusName = "Name"
 	// Certificate version string for the certificate status property
 	StatusVersion = "Version"
+	// Enabled string for the certificate status property
+	StatusEnabled = "Enabled"
 	// Last refreshed string for the certificate status property
 	StatusLastRefreshed = "LastRefreshed"
 )
@@ -35,4 +37,6 @@ type KeyVaultValue struct {
 	Name string `json:"name" yaml:"name"`
 	// the version of the Azure Key Vault certificate/key
 	Version string `json:"version" yaml:"version"`
+	// the number of versions to keep in the cache
+	VersionHistoryLimit int `json:"versionHistoryLimit" yaml:"versionHistoryLimit"`
 }

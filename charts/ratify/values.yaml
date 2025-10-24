@@ -1,7 +1,7 @@
 image:
   repository: ghcr.io/ratify-project/ratify
   crdRepository: ghcr.io/ratify-project/ratify-crds
-  tag: v1.2.0
+  tag: v1.4.0
   pullPolicy: IfNotPresent
 
 nameOverride: ""
@@ -11,6 +11,16 @@ affinity: {}
 tolerations: []
 notationCerts: []
 cosignKeys: []
+
+notation:
+  enabled: true
+  trustPolicies:
+    - name: default
+      verificatonLevel: strict
+      registryScopes:
+        - "*"
+      trustedIdentities: ["*"]
+      trustStores: []
 
 cosign:
   enabled: true
@@ -46,11 +56,15 @@ resources:
   requests:
     cpu: 600m
     memory: 512Mi
+
 serviceAccount:
   create: true
   name: ratify-admin
+  # Annotations to add to the service account
+  annotations: {}
+
 gatekeeper:
-  version: "3.16.0"
+  version: "3.18.0"
   namespace: # default is gatekeeper-system
 instrumentation:
   metricsEnabled: true
@@ -73,12 +87,18 @@ azurekeyvault:
   tenantId:
   certificates: []
   keys: []
+  refreshInterval:
+
+alibabacloudAcrConfig:
+  defaultInstanceId:
+  acrInstancesConfig: []
 
 oras:
   useHttp: false
   authProviders:
     azureWorkloadIdentityEnabled: false
     azureManagedIdentityEnabled: false
+    azureContainerRegistryEndpoints: []
     k8secretsEnabled: false
     awsEcrBasicEnabled: false
     awsApiOverride:
@@ -86,6 +106,8 @@ oras:
       endpoint: ""
       partition: "" # defaults to aws
       region: ""
+    alibabacloudAcrBasicEnabled: false
+
   cache:
     # Please tune your cache parameters to get better performance on the Oras Store performance.
     enabled: true # ttl-based cache may cause inconsistency between cache and data source, please disable it if strong consistency is required.
@@ -147,6 +169,10 @@ logger:
     traceIDHeaderName: # List of headers that include the trace ID in the external data requests to Ratify. The same headers will be passed to upstream services like remote registries.
       - "" # e.g. Set it to `x-ms-correlation-request-id` to trace across Azure.
 
+crl:
+  cache:
+    enabled: true # Enable CRL cache
+
 # See https://ratify.dev/docs/reference/usage#feature-flags for a list of available feature flags
 featureFlags:
   # RATIFY_FEATURE_NAME: true
@@ -166,3 +192,8 @@ akvCertConfig: # DEPRECATED: Use azurekeyvault instead
   cert2Version: # DEPRECATED: Use azurekeyvault.certificates instead
   certificates: # DEPRECATED: Use azurekeyvault.certificates instead
   tenantId: # DEPRECATED: Use azurekeyvault.tenantId instead
+
+# env: environment variables for ratify container
+env: []
+#  - name: https_proxy
+#    value: http://proxy-server:80

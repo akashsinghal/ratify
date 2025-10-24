@@ -2,7 +2,7 @@ name: publish-dev-assets
 
 on:
   schedule:
-    - cron: '30 8 * * 0'  # early morning (08:30 UTC) every Sunday
+    - cron: "30 8 * * 0" # early morning (08:30 UTC) every Sunday
   workflow_dispatch:
 
 permissions: read-all
@@ -13,14 +13,34 @@ jobs:
     permissions:
       packages: write
       contents: read
+      id-token: write
+    environment: azure-publish
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
         with:
           egress-policy: audit
-
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install Notation
+        uses: notaryproject/notation-action/setup@b6fee73110795d6793253c673bd723f12bcf9bbb # v1.2.2
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+      - name: Az CLI login
+        uses: azure/login@a65d910e8af852a8061c627c456678983e180302 # v2.2.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Cache AAD tokens
+        run: |
+          az version
+          # Key Vault: 
+          az account get-access-token --scope https://vault.azure.net/.default --output none
+      - name: Prepare notation certificate
+        run: |
+          mkdir -p truststore/x509/ca/ratify-verify
+          cp ./.well-known/pki-validation/ratify-verification.crt truststore/x509/ca/ratify-verify
       - name: prepare
         id: prepare
         run: |
@@ -42,7 +62,7 @@ jobs:
           echo ::set-output name=baseref::${REPOSITORYBASE}
           echo ::set-output name=crdref::${REPOSITORYCRD}
       - name: docker login
-        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -50,11 +70,22 @@ jobs:
       - name: docker build ratify-crds
         run: |
           docker buildx create --use
-          docker buildx build --build-arg KUBE_VERSION="1.29.2" -f crd.Dockerfile --platform linux/amd64,linux/arm64,linux/arm/v7 --label org.opencontainers.image.revision=${{ github.sha }} -t ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }} -t ${{ steps.prepare.outputs.crdref }} --push ./charts/ratify/crds
+          docker buildx build \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
+            --build-arg KUBE_VERSION="1.30.6" \
+            -f crd.Dockerfile \
+            --platform linux/amd64,linux/arm64,linux/arm/v7 \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            -t ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }} \
+            -t ${{ steps.prepare.outputs.crdref }} \
+            --push ./charts/ratify/crds
       - name: docker build ratify base
         run: |
           docker buildx create --use         
           docker buildx build -f ./httpserver/Dockerfile \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
             --platform linux/amd64,linux/arm64,linux/arm/v7 \
             --build-arg LDFLAGS="-X github.com/ratify-project/ratify/internal/version.Version=$(TAG)" \
             --label org.opencontainers.image.revision=${{ github.sha }} \
@@ -65,6 +96,8 @@ jobs:
         run: |
           docker buildx create --use
           docker buildx build -f ./httpserver/Dockerfile \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
             --platform linux/amd64,linux/arm64,linux/arm/v7 \
             --build-arg build_sbom=true \
             --build-arg build_licensechecker=true \
@@ -79,15 +112,74 @@ jobs:
         run: |
           sed -i '/^  repository:/c\  repository: ghcr.io/ratify-project/ratify-dev' charts/ratify/values.yaml
           sed -i '/^  crdRepository:/c\  crdRepository: ghcr.io/ratify-project/ratify-crds-dev' charts/ratify/values.yaml
-          sed -i '/^  tag:/c\  tag: ${{ steps.prepare.outputs.version }}' charts/ratify/values.yaml 
+          sed -i '/^  tag:/c\  tag: ${{ steps.prepare.outputs.version }}' charts/ratify/values.yaml
       - name: helm package
         run: |
-            helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversion }}
-            helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversionrolling }}
+          helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversion }}
+          helm package ./charts/ratify --version ${{ steps.prepare.outputs.semversionrolling }}
       - name: helm push
         run: |
           helm push ratify-${{ steps.prepare.outputs.semversion }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
           helm push ratify-${{ steps.prepare.outputs.semversionrolling }}.tgz oci://${{ steps.prepare.outputs.chartrepo }}
+      - name: Sign with Notation
+        uses: notaryproject/notation-action/sign@b6fee73110795d6793253c673bd723f12bcf9bbb # v1.2.2
+        with:
+          plugin_name: azure-kv
+          plugin_url: ${{ vars.AZURE_KV_PLUGIN_URL }}
+          plugin_checksum: ${{ vars.AZURE_KV_CHECKSUM }}
+          key_id: ${{ secrets.AZURE_KV_KEY_ID }}
+          target_artifact_reference: |-
+            ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
+          signature_format: cose
+      - name: Sign with Cosign
+        run: |
+          cosign sign --yes ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+          cosign sign --yes ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+          cosign sign --yes ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
+      - name: Verify with Notation
+        uses: notaryproject/notation-action/verify@b6fee73110795d6793253c673bd723f12bcf9bbb # v1.2.2
+        with:
+          target_artifact_reference: |-
+            ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
+          trust_policy: ./.well-known/pki-validation/trustpolicy.json
+          trust_store: truststore
+      - name: Verify with Cosign
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/ratify-project/ratify/.github/workflows/publish-dev-assets.yml@*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ratify-project/ratify \
+            ${{ steps.prepare.outputs.crdref }}:${{ steps.prepare.outputs.version }}
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/ratify-project/ratify/.github/workflows/publish-dev-assets.yml@*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ratify-project/ratify \
+            ${{ steps.prepare.outputs.baseref }}:${{ steps.prepare.outputs.version }}
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/ratify-project/ratify/.github/workflows/publish-dev-assets.yml@*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ratify-project/ratify \
+            ${{ steps.prepare.outputs.ref }}:${{ steps.prepare.outputs.version }}
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/ratify-project/ratify/.github/workflows/publish-dev-assets.yml@*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ratify-project/ratify \
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversionrolling }}
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/ratify-project/ratify/.github/workflows/publish-dev-assets.yml@*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ratify-project/ratify \
+            ${{ steps.prepare.outputs.chartrepo }}/ratify:${{ steps.prepare.outputs.semversion }}
       - name: clear
         if: always()
         run: |

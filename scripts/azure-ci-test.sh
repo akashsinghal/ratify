@@ -27,8 +27,8 @@ export AKS_NAME="${AKS_NAME:-ratify-aks-${SUFFIX}}"
 export KEYVAULT_NAME="${KEYVAULT_NAME:-ratify-akv-${SUFFIX}}"
 export USER_ASSIGNED_IDENTITY_NAME="${USER_ASSIGNED_IDENTITY_NAME:-ratify-e2e-identity-${SUFFIX}}"
 export LOCATION="westus2"
-export KUBERNETES_VERSION=${1:-1.29.2}
-GATEKEEPER_VERSION=${2:-3.16.0}
+export KUBERNETES_VERSION=${1:-1.30.6}
+GATEKEEPER_VERSION=${2:-3.18.0}
 TENANT_ID=$3
 export RATIFY_NAMESPACE=${4:-gatekeeper-system}
 CERT_DIR=${5:-"~/ratify/certs"}
@@ -142,7 +142,7 @@ trap cleanup EXIT
 main() {
   ./scripts/create-azure-resources.sh
   create_key_akv
-  
+
   local ACR_USER_NAME="00000000-0000-0000-0000-000000000000"
   local ACR_PASSWORD=$(az acr login --name ${ACR_NAME} --expose-token --output tsv --query accessToken)
   make e2e-azure-setup TEST_REGISTRY=$REGISTRY TEST_REGISTRY_USERNAME=${ACR_USER_NAME} TEST_REGISTRY_PASSWORD=${ACR_PASSWORD} KEYVAULT_KEY_NAME=${KEYVAULT_KEY_NAME} KEYVAULT_NAME=${KEYVAULT_NAME}
@@ -152,7 +152,9 @@ main() {
   deploy_gatekeeper
   deploy_ratify
 
-  TEST_REGISTRY=$REGISTRY bats -t ./test/bats/azure-test.bats
+  local IDENTITY_CLIENT_ID=$(az identity show --name ${USER_ASSIGNED_IDENTITY_NAME} --resource-group ${GROUP_NAME} --query 'clientId' -o tsv)
+  local VAULT_URI=$(az keyvault show --name ${KEYVAULT_NAME} --resource-group ${GROUP_NAME} --query "properties.vaultUri" -otsv)
+  TEST_REGISTRY=$REGISTRY IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID VAULT_URI=$VAULT_URI bats -t ./test/bats/azure-test.bats
 }
 
 main

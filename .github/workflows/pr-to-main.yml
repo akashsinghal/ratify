@@ -2,7 +2,7 @@ name: pr_to_main
 
 on:
   schedule:
-    - cron: '30 8 * * 0'  # early morning (08:30 UTC) every Sunday
+    - cron: "30 8 * * 0" # early morning (08:30 UTC) every Sunday
   workflow_dispatch:
 
 permissions:
@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
         with:
           egress-policy: audit
 
       - name: git checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Get current date
         id: date
         run: echo "::set-output name=date::$(date +'%Y-%m-%d')"

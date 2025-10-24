@@ -118,4 +118,25 @@ var (
 		Message:     "data encoding failure",
 		Description: "Failed to encode data. Please verify the encoding data.",
 	})
+
+	// ErrorCodeNotFound is returned when the requested resource is not found.
+	ErrorCodeNotFound = Register("errcode", ErrorDescriptor{
+		Value:       "RESOURCE_NOT_FOUND",
+		Message:     "resource not found",
+		Description: "The requested resource is not found. Please verify the resource exists.",
+	})
+
+	// ErrorCodeForbidden is returned when the requested operation is forbidden.
+	ErrorCodeForbidden = Register("errcode", ErrorDescriptor{
+		Value:       "OPERATION_FORBIDDEN",
+		Message:     "operation forbidden",
+		Description: "The requested operation is forbidden. Please verify the permission to the requested resource.",
+	})
+
+	// ErrorCodeConfigInvalid is returned if provided alibabacloud image is invalid.
+	ErrorCodeAlibabaCloudImageInvalid = Register("errcode", ErrorDescriptor{
+		Value:       "ALIBABACLOUD_IMAGE_INVALID",
+		Message:     "image invalid",
+		Description: `Invalid Alibaba Cloud Registry image format. Please verify your image configuration.`,
+	})
 )

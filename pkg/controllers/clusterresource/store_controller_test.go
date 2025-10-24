@@ -22,10 +22,10 @@ import (
 	"testing"
 
 	configv1beta1 "github.com/ratify-project/ratify/api/v1beta1"
+	re "github.com/ratify-project/ratify/errors"
 	"github.com/ratify-project/ratify/internal/constants"
 	"github.com/ratify-project/ratify/pkg/controllers"
 	rs "github.com/ratify-project/ratify/pkg/customresources/referrerstores"
-	"github.com/ratify-project/ratify/pkg/utils"
 	test "github.com/ratify-project/ratify/pkg/utils"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +45,7 @@ const (
 
 func TestStoreAdd_EmptyParameter(t *testing.T) {
 	resetStoreMap()
-	dirPath, err := utils.CreatePlugin(sampleName)
+	dirPath, err := test.CreatePlugin(sampleName)
 	if err != nil {
 		t.Fatalf("createPlugin() expected no error, actual %v", err)
 	}
@@ -70,7 +70,7 @@ func TestStoreAdd_WithParameters(t *testing.T) {
 	if len(controllers.NamespacedStores.GetStores(constants.EmptyNamespace)) != 0 {
 		t.Fatalf("Store map expected size 0, actual %v", len(controllers.NamespacedStores.GetStores(constants.EmptyNamespace)))
 	}
-	dirPath, err := utils.CreatePlugin(sampleName)
+	dirPath, err := test.CreatePlugin(sampleName)
 	if err != nil {
 		t.Fatalf("createPlugin() expected no error, actual %v", err)
 	}
@@ -119,8 +119,9 @@ func TestWriteStoreStatus(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			writeStoreStatus(context.Background(), tc.reconciler, tc.store, logger, tc.isSuccess, tc.errString)
+		t.Run(tc.name, func(_ *testing.T) {
+			err := re.ErrorCodeUnknown.WithDetail(tc.errString)
+			writeStoreStatus(context.Background(), tc.reconciler, tc.store, logger, tc.isSuccess, &err)
 		})
 	}
 }
@@ -139,7 +140,7 @@ func TestStoreAddOrReplace_PluginNotFound(t *testing.T) {
 
 func TestStore_UpdateAndDelete(t *testing.T) {
 	resetStoreMap()
-	dirPath, err := utils.CreatePlugin(sampleName)
+	dirPath, err := test.CreatePlugin(sampleName)
 	if err != nil {
 		t.Fatalf("createPlugin() expected no error, actual %v", err)
 	}
@@ -233,6 +234,21 @@ func TestStoreReconcile(t *testing.T) {
 					Parameters: runtime.RawExtension{
 						Raw: []byte("test"),
 					},
+				},
+			},
+			expectedErr:        true,
+			expectedStoreCount: 0,
+		},
+		{
+			name: "unsupported store",
+			store: &configv1beta1.Store{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: constants.EmptyNamespace,
+					Name:      storeName,
+				},
+				Spec: configv1beta1.StoreSpec{
+					Name:    "unsupported",
+					Address: dirPath,
 				},
 			},
 			expectedErr:        true,

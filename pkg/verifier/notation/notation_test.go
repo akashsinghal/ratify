@@ -18,12 +18,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"net/http"
 	paths "path/filepath"
 	"reflect"
 	"testing"
 
+	corecrl "github.com/notaryproject/notation-core-go/revocation/crl"
 	sig "github.com/notaryproject/notation-core-go/signature"
 	"github.com/notaryproject/notation-go"
+	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	ratifyconfig "github.com/ratify-project/ratify/config"
@@ -70,6 +73,10 @@ var (
 		Digest:   testDigest2,
 	}
 	invalidRef = common.Reference{
+		Original: "invalid",
+		Tag:      "invalid",
+	}
+	invalidRef2 = common.Reference{
 		Original: "invalid",
 	}
 	testNotationPluginVerifier notation.Verifier = mockNotationPluginVerifier{}
@@ -136,7 +143,10 @@ func (s mockStore) GetConfig() *config.StoreConfig {
 	return nil
 }
 
-func (s mockStore) GetSubjectDescriptor(_ context.Context, _ common.Reference) (*ocispecs.SubjectDescriptor, error) {
+func (s mockStore) GetSubjectDescriptor(_ context.Context, subjectReference common.Reference) (*ocispecs.SubjectDescriptor, error) {
+	if subjectReference.Tag == "invalid" {
+		return nil, fmt.Errorf("cannot resolve digest for the subject reference")
+	}
 	return &ocispecs.SubjectDescriptor{
 		Descriptor: ocispec.Descriptor{},
 	}, nil
@@ -214,7 +224,22 @@ func TestParseVerifierConfig(t *testing.T) {
 			name: "failed unmarshalling to notation config",
 			configMap: map[string]interface{}{
 				"name":              test,
-				"verificationCerts": test,
+				"verificationCerts": make(chan int),
+			},
+			expectErr: true,
+			expect:    nil,
+		},
+		{
+			name: "failed unmarshalling to notation config",
+			configMap: map[string]interface{}{
+				"name": test,
+				"verificationCertStores": verificationCertStores{
+					"certstore1": []interface{}{"akv1", "akv2"},
+					"ca": map[string]interface{}{
+						"certstore1": []interface{}{"akv1", "akv2"},
+						"certstore2": []interface{}{"akv3", "akv4"},
+					},
+				},
 			},
 			expectErr: true,
 			expect:    nil,
@@ -248,7 +273,7 @@ func TestParseVerifierConfig(t *testing.T) {
 				"name":              test,
 				"verificationCerts": []string{testPath},
 				"verificationCertStores": map[string][]string{
-					"certstore1": {"defaultns/akv1", "akv2"},
+					"certstore1": {"akv1", "akv2"},
 					"certstore2": {"akv3", "akv4"},
 				},
 			},
@@ -256,9 +281,11 @@ func TestParseVerifierConfig(t *testing.T) {
 			expect: &NotationPluginVerifierConfig{
 				Name:              test,
 				VerificationCerts: []string{testPath, defaultCertDir},
-				VerificationCertStores: map[string][]string{
-					"certstore1": {"defaultns/akv1", "akv2"},
-					"certstore2": {"akv3", "akv4"},
+				VerificationCertStores: verificationCertStores{
+					trustStoreTypeCA: map[string]interface{}{
+						"certstore1": []interface{}{"akv1", "akv2"},
+						"certstore2": []interface{}{"akv3", "akv4"},
+					},
 				},
 			},
 		},
@@ -300,6 +327,18 @@ func TestCreate(t *testing.T) {
 		expect    verifier.ReferenceVerifier
 		expectErr bool
 	}{
+		{
+			name: "failed get verify service",
+			configMap: map[string]interface{}{
+				"name": test,
+				"verificationCertStores": verificationCertStores{
+					trustStoreTypeCA: verificationCertStores{
+						"certstore1": []interface{}{"akv1", "akv2", 1},
+					},
+				},
+			},
+			expectErr: true,
+		},
 		{
 			name: "failed parsing verifier config",
 			configMap: map[string]interface{}{
@@ -348,8 +387,16 @@ func TestVerify(t *testing.T) {
 		expectErr bool
 	}{
 		{
-			name:      "failed getting manifest",
+			name:      "failed getting subject descriptor",
 			ref:       invalidRef,
+			refBlob:   []byte(""),
+			manifest:  ocispecs.ReferenceManifest{},
+			expect:    failedResult,
+			expectErr: true,
+		},
+		{
+			name:      "failed getting manifest",
+			ref:       invalidRef2,
 			refBlob:   []byte(""),
 			manifest:  ocispecs.ReferenceManifest{},
 			expect:    failedResult,
@@ -361,6 +408,26 @@ func TestVerify(t *testing.T) {
 			refBlob: testRefBlob2,
 			manifest: ocispecs.ReferenceManifest{
 				Blobs: []ocispec.Descriptor{validBlobDesc2},
+			},
+			expect:    failedResult,
+			expectErr: true,
+		},
+		{
+			name:    "multiple signature blobs",
+			ref:     validRef2,
+			refBlob: testRefBlob2,
+			manifest: ocispecs.ReferenceManifest{
+				Blobs: []ocispec.Descriptor{validBlobDesc, validBlobDesc2},
+			},
+			expect:    failedResult,
+			expectErr: true,
+		},
+		{
+			name:    "get blob content failed",
+			ref:     validRef,
+			refBlob: nil,
+			manifest: ocispecs.ReferenceManifest{
+				Blobs: []ocispec.Descriptor{validBlobDesc},
 			},
 			expect:    failedResult,
 			expectErr: true,
@@ -407,4 +474,159 @@ func TestGetNestedReferences(t *testing.T) {
 	if len(nestedReferences) != 0 {
 		t.Fatalf("notation signature should not have nested references")
 	}
+}
+
+func TestNormalizeVerificationCertsStores(t *testing.T) {
+	tests := []struct {
+		name      string
+		conf      *NotationPluginVerifierConfig
+		expectErr bool
+	}{
+		{
+			name: "failed normalizaVerificationCertsStores in marshal function",
+			conf: &NotationPluginVerifierConfig{
+				Name:              test,
+				VerificationCerts: []string{testPath, defaultCertDir},
+				VerificationCertStores: verificationCertStores{
+					"certstore2": []interface{}{make(chan int)},
+				},
+			},
+			expectErr: true,
+		},
+		{
+
+			name: "failed normalizaVerificationCertsStores with both old VerificationCertStores and new VerificationCertStores are provided",
+			conf: &NotationPluginVerifierConfig{
+				Name:              test,
+				VerificationCerts: []string{testPath, defaultCertDir},
+				VerificationCertStores: verificationCertStores{
+					trustStoreTypeCA: map[string]interface{}{
+						"certstore1": []interface{}{"akv1", "akv2"},
+					},
+					"certstore2": []interface{}{"akv3", "akv4"},
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "successfully normalizaVerificationCertsStores",
+			conf: &NotationPluginVerifierConfig{
+				Name:              test,
+				VerificationCerts: []string{testPath, defaultCertDir},
+				VerificationCertStores: verificationCertStores{
+					trustStoreTypeCA: map[string]interface{}{
+						"certstore1": []interface{}{"akv1", "akv2"},
+						"certstore2": []interface{}{"akv3", "akv4"},
+					},
+				},
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := normalizeVerificationCertsStores(tt.conf)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("error = %v, expectErr = %v", err, tt.expectErr)
+			}
+		})
+	}
+}
+
+func TestNormalizeLegacyCertStore(t *testing.T) {
+	tests := []struct {
+		name      string
+		conf      *NotationPluginVerifierConfig
+		expectErr bool
+	}{
+		{
+			name: "successfully normalizaVerificationCertsStores",
+			conf: &NotationPluginVerifierConfig{
+				Name:              test,
+				VerificationCerts: []string{testPath, defaultCertDir},
+				VerificationCertStores: verificationCertStores{
+					"certstore2": []interface{}{make(chan int)},
+				},
+			},
+			expectErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := normalizeLegacyCertStore(tt.conf)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("error = %v, expectErr = %v", err, tt.expectErr)
+			}
+		})
+	}
+}
+func TestGetVerifierService(t *testing.T) {
+	tests := []struct {
+		name              string
+		conf              *NotationPluginVerifierConfig
+		pluginDir         string
+		RevocationFactory RevocationFactory
+		expectErr         bool
+		errContent        error
+	}{
+		{
+			name: "failed to create CRL fetcher",
+			conf: &NotationPluginVerifierConfig{
+				VerificationCerts: []string{defaultCertDir},
+			},
+			pluginDir:         "",
+			RevocationFactory: mockRevocationFactory{httpClient: &http.Client{}, failFetcher: true},
+			expectErr:         true,
+			errContent:        nil,
+		},
+		{
+			name: "successfully create verifier service",
+			conf: &NotationPluginVerifierConfig{
+				VerificationCerts: []string{defaultCertDir},
+				TrustPolicyDoc: trustpolicy.Document{
+					Version: "1.0",
+					TrustPolicies: []trustpolicy.TrustPolicy{
+						{
+							Name:           "default",
+							RegistryScopes: []string{"*"},
+							SignatureVerification: trustpolicy.SignatureVerification{
+								VerificationLevel: "strict",
+							},
+							TrustStores:       []string{"ca:certs"},
+							TrustedIdentities: []string{"*"},
+						},
+					},
+				},
+			},
+			pluginDir:         "",
+			RevocationFactory: mockRevocationFactory{httpClient: &http.Client{}},
+			expectErr:         false,
+			errContent:        nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := getVerifierService(context.Background(), tt.conf, tt.pluginDir, tt.RevocationFactory)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("error = %v, expectErr = %v", err, tt.expectErr)
+			}
+			if tt.errContent != nil && err.Error() != tt.errContent.Error() {
+				t.Errorf("error = %v, expectErr = %v, content = %v", err, tt.expectErr, tt.errContent)
+			}
+		})
+	}
+}
+
+type mockRevocationFactory struct {
+	failFetcher bool
+	httpClient  *http.Client
+}
+
+func (m mockRevocationFactory) NewFetcher() (corecrl.Fetcher, error) {
+	if m.failFetcher {
+		return nil, fmt.Errorf("failed to create fetcher")
+	}
+	return corecrl.NewHTTPFetcher(m.httpClient)
 }

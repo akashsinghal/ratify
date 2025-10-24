@@ -45,8 +45,9 @@ import (
 	"github.com/ratify-project/ratify/pkg/cache"
 	"github.com/ratify-project/ratify/pkg/common"
 	"github.com/ratify-project/ratify/pkg/common/oras/authprovider"
-	_ "github.com/ratify-project/ratify/pkg/common/oras/authprovider/aws"   // register aws auth provider
-	_ "github.com/ratify-project/ratify/pkg/common/oras/authprovider/azure" // register azure auth provider
+	_ "github.com/ratify-project/ratify/pkg/common/oras/authprovider/alibabacloud" // register alibabacloud auth provider
+	_ "github.com/ratify-project/ratify/pkg/common/oras/authprovider/aws"          // register aws auth provider
+	_ "github.com/ratify-project/ratify/pkg/common/oras/authprovider/azure"        // register azure auth provider
 	commonutils "github.com/ratify-project/ratify/pkg/common/utils"
 	"github.com/ratify-project/ratify/pkg/homedir"
 	"github.com/ratify-project/ratify/pkg/metrics"
@@ -57,12 +58,12 @@ import (
 )
 
 const (
-	HTTPMaxIdleConns                       = 100
-	HTTPMaxConnsPerHost                    = 100
-	HTTPMaxIdleConnsPerHost                = 100
-	HTTPRetryMax                           = 5
-	HTTPRetryDurationMinimum time.Duration = 200 * time.Millisecond
-	HTTPRetryDurationMax     time.Duration = 1750 * time.Millisecond
+	HTTPMaxIdleConns         = 100
+	HTTPMaxConnsPerHost      = 100
+	HTTPMaxIdleConnsPerHost  = 100
+	HTTPRetryMax             = 5
+	HTTPRetryDurationMinimum = 200 * time.Millisecond
+	HTTPRetryDurationMax     = 1750 * time.Millisecond
 )
 
 const (
@@ -183,7 +184,7 @@ func createBaseStore(version string, storeConfig config.StorePluginConfig) (*ora
 	insecureTransport.MaxIdleConnsPerHost = HTTPMaxIdleConnsPerHost
 	// #nosec G402
 	insecureTransport.TLSClientConfig = &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, //nolint:gosec
 	}
 	insecureRetryTransport := retry.NewTransport(insecureTransport)
 	insecureRetryTransport.Policy = customRetryPolicy
@@ -208,7 +209,7 @@ func (store *orasStore) GetConfig() *config.StoreConfig {
 func (store *orasStore) ListReferrers(ctx context.Context, subjectReference common.Reference, _ []string, _ string, subjectDesc *ocispecs.SubjectDescriptor) (referrerstore.ListReferrersResult, error) {
 	repository, err := store.createRepository(ctx, store, subjectReference)
 	if err != nil {
-		return referrerstore.ListReferrersResult{}, re.ErrorCodeCreateRepositoryFailure.WithError(err).WithComponentType(re.ReferrerStore)
+		return referrerstore.ListReferrersResult{}, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to connect to the remote registry").WithError(err)
 	}
 
 	// resolve subject descriptor if not provided
@@ -256,9 +257,11 @@ func (store *orasStore) ListReferrers(ctx context.Context, subjectReference comm
 
 func (store *orasStore) GetBlobContent(ctx context.Context, subjectReference common.Reference, digest digest.Digest) ([]byte, error) {
 	var err error
+	var blobContent []byte
+
 	repository, err := store.createRepository(ctx, store, subjectReference)
 	if err != nil {
-		return nil, err
+		return nil, re.ErrorCodeGetBlobContentFailure.WithDetail("Failed to connect to the remote registry").WithError(err)
 	}
 
 	// create a dummy Descriptor to check the local store cache
@@ -270,9 +273,17 @@ func (store *orasStore) GetBlobContent(ctx context.Context, subjectReference com
 	// check if blob exists in local ORAS cache
 	isCached, err := store.localCache.Exists(ctx, blobDescriptor)
 	if err != nil {
-		return nil, err
+		logger.GetLogger(ctx, logOpt).Warnf("failed to check if blob [%s] exists in cache: %v", blobDescriptor.Digest.String(), err)
 	}
 	metrics.ReportBlobCacheCount(ctx, isCached)
+
+	if isCached {
+		blobContent, err = store.getRawContentFromCache(ctx, blobDescriptor)
+		if err != nil {
+			isCached = false
+			logger.GetLogger(ctx, logOpt).Warnf("failed to get blob [%s] from cache: %v", blobDescriptor.Digest.String(), err)
+		}
+	}
 
 	if !isCached {
 		// generate the reference path with digest
@@ -282,74 +293,84 @@ func (store *orasStore) GetBlobContent(ctx context.Context, subjectReference com
 		blobDesc, rc, err := repository.Blobs().FetchReference(ctx, ref)
 		if err != nil {
 			evictOnError(ctx, err, subjectReference.Original)
-			return nil, err
+			return nil, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to fetch the artifact metadata from the registry").WithError(err)
+		}
+		if blobContent, err = io.ReadAll(rc); err != nil {
+			return nil, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to parse the artifact metadata").WithError(err)
 		}
 
 		// push fetched content to local ORAS cache
+		// If multiple goroutines try to push the same blob to the cache, oras-go
+		// may return `ErrAlreadyExists` error. This is expected and can be ignored.
 		orasExistsExpectedError := fmt.Errorf("%s: %s: %w", blobDesc.Digest, blobDesc.MediaType, errdef.ErrAlreadyExists)
-		err = store.localCache.Push(ctx, blobDesc, rc)
-		if err != nil && err.Error() != orasExistsExpectedError.Error() {
-			return nil, err
+		if err = store.localCache.Push(ctx, blobDesc, bytes.NewReader(blobContent)); err != nil && err.Error() != orasExistsExpectedError.Error() {
+			logger.GetLogger(ctx, logOpt).Warnf("failed to save blob [%s] in cache: %v", blobDesc.Digest, err)
 		}
 	}
 
-	return store.getRawContentFromCache(ctx, blobDescriptor)
+	return blobContent, nil
 }
 
 func (store *orasStore) GetReferenceManifest(ctx context.Context, subjectReference common.Reference, referenceDesc ocispecs.ReferenceDescriptor) (ocispecs.ReferenceManifest, error) {
 	repository, err := store.createRepository(ctx, store, subjectReference)
 	if err != nil {
-		return ocispecs.ReferenceManifest{}, re.ErrorCodeCreateRepositoryFailure.NewError(re.ReferrerStore, storeName, re.EmptyLink, err, nil, re.HideStackTrace)
+		return ocispecs.ReferenceManifest{}, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to connect to the remote registry").WithError(err)
 	}
 	var manifestBytes []byte
 	// check if manifest exists in local ORAS cache
 	isCached, err := store.localCache.Exists(ctx, referenceDesc.Descriptor)
 	if err != nil {
-		return ocispecs.ReferenceManifest{}, err
+		logger.GetLogger(ctx, logOpt).Warnf("failed to check if manifest [%s] exists in cache: %v", referenceDesc.Digest, err)
 	}
 	metrics.ReportBlobCacheCount(ctx, isCached)
+
+	if isCached {
+		manifestBytes, err = store.getRawContentFromCache(ctx, referenceDesc.Descriptor)
+		if err != nil {
+			isCached = false
+			logger.GetLogger(ctx, logOpt).Warnf("failed to get manifest [%s] from cache: %v", referenceDesc.Digest, err)
+		}
+	}
 
 	if !isCached {
 		// fetch manifest content from repository
 		manifestReader, err := repository.Fetch(ctx, referenceDesc.Descriptor)
 		if err != nil {
 			evictOnError(ctx, err, subjectReference.Original)
-			return ocispecs.ReferenceManifest{}, re.ErrorCodeRepositoryOperationFailure.NewError(re.ReferrerStore, storeName, re.EmptyLink, err, nil, re.HideStackTrace)
+			return ocispecs.ReferenceManifest{}, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to fetch the artifact metadata from the registry").WithError(err)
 		}
 
 		manifestBytes, err = io.ReadAll(manifestReader)
 		if err != nil {
-			return ocispecs.ReferenceManifest{}, re.ErrorCodeManifestInvalid.WithError(err).WithPluginName(storeName).WithComponentType(re.ReferrerStore)
+			return ocispecs.ReferenceManifest{}, re.ErrorCodeManifestInvalid.WithDetail("Failed to parse the artifact metadata").WithError(err)
 		}
 
 		// push fetched manifest to local ORAS cache
-		orasExistsExpectedError := fmt.Errorf("%s: %s: %w", referenceDesc.Descriptor.Digest, referenceDesc.Descriptor.MediaType, errdef.ErrAlreadyExists)
+		// If multiple goroutines try to push the same manifest to the cache, oras-go
+		// may return `ErrAlreadyExists` error. This is expected and can be ignored.
+		orasExistsExpectedError := fmt.Errorf("%s: %s: %w", referenceDesc.Digest, referenceDesc.MediaType, errdef.ErrAlreadyExists)
 		err = store.localCache.Push(ctx, referenceDesc.Descriptor, bytes.NewReader(manifestBytes))
 		if err != nil && err.Error() != orasExistsExpectedError.Error() {
-			return ocispecs.ReferenceManifest{}, err
-		}
-	} else {
-		manifestBytes, err = store.getRawContentFromCache(ctx, referenceDesc.Descriptor)
-		if err != nil {
-			return ocispecs.ReferenceManifest{}, err
+			logger.GetLogger(ctx, logOpt).Warnf("failed to save manifest [%s] in cache: %v", referenceDesc.Digest, err)
 		}
 	}
 
 	referenceManifest := ocispecs.ReferenceManifest{}
 
 	// marshal manifest bytes into reference manifest descriptor
-	if referenceDesc.Descriptor.MediaType == oci.MediaTypeImageManifest {
+	switch referenceDesc.MediaType {
+	case oci.MediaTypeImageManifest:
 		var imageManifest oci.Manifest
 		if err := json.Unmarshal(manifestBytes, &imageManifest); err != nil {
-			return ocispecs.ReferenceManifest{}, re.ErrorCodeDataDecodingFailure.WithError(err).WithComponentType(re.ReferrerStore)
+			return ocispecs.ReferenceManifest{}, re.ErrorCodeDataDecodingFailure.WithDetail("Failed to parse artifact metadata of mediatype `application/vnd.oci.image.manifest.v1+json`").WithError(err).WithRemediation("Please check if the artifact metadata was created correctly.")
 		}
 		referenceManifest = commonutils.OciManifestToReferenceManifest(imageManifest)
-	} else if referenceDesc.Descriptor.MediaType == ocispecs.MediaTypeArtifactManifest {
+	case ocispecs.MediaTypeArtifactManifest:
 		if err := json.Unmarshal(manifestBytes, &referenceManifest); err != nil {
-			return ocispecs.ReferenceManifest{}, re.ErrorCodeDataDecodingFailure.WithError(err).WithComponentType(re.ReferrerStore)
+			return ocispecs.ReferenceManifest{}, re.ErrorCodeDataDecodingFailure.WithDetail("Failed to parse artifact metadata of mediatype `application/vnd.oci.artifact.manifest.v1+json`").WithError(err).WithRemediation("Please check if the artifact metadata was created correctly.")
 		}
-	} else {
-		return ocispecs.ReferenceManifest{}, fmt.Errorf("unsupported manifest media type: %s", referenceDesc.Descriptor.MediaType)
+	default:
+		return ocispecs.ReferenceManifest{}, re.ErrorCodeGetReferenceManifestFailure.WithDetail(fmt.Sprintf("Unsupported artifact metadata of media type %s", referenceDesc.Descriptor.MediaType)).WithRemediation("Please check if the artifact metadata was created correctly.")
 	}
 
 	return referenceManifest, nil
@@ -358,13 +379,13 @@ func (store *orasStore) GetReferenceManifest(ctx context.Context, subjectReferen
 func (store *orasStore) GetSubjectDescriptor(ctx context.Context, subjectReference common.Reference) (*ocispecs.SubjectDescriptor, error) {
 	repository, err := store.createRepository(ctx, store, subjectReference)
 	if err != nil {
-		return nil, re.ErrorCodeCreateRepositoryFailure.WithError(err).WithComponentType(re.ReferrerStore).WithPluginName(storeName)
+		return nil, re.ErrorCodeRepositoryOperationFailure.WithDetail("Failed to connect to remote registry").WithError(err)
 	}
 
 	desc, err := repository.Resolve(ctx, subjectReference.Original)
 	if err != nil {
 		evictOnError(ctx, err, subjectReference.Original)
-		return nil, re.ErrorCodeRepositoryOperationFailure.WithError(err).WithPluginName(storeName)
+		return nil, re.ErrorCodeRepositoryOperationFailure.WithDetail(fmt.Sprintf("Unable to resolve the reference: %s", subjectReference.Original)).WithError(err)
 	}
 
 	return &ocispecs.SubjectDescriptor{Descriptor: desc}, nil
@@ -437,7 +458,7 @@ func createDefaultRepository(ctx context.Context, store *orasStore, targetRef co
 	}
 
 	// set the provider to return the resolved credentials
-	credentialProvider := func(ctx context.Context, registry string) (auth.Credential, error) {
+	credentialProvider := func(_ context.Context, _ string) (auth.Credential, error) {
 		if authConfig.Username != "" || authConfig.Password != "" || authConfig.IdentityToken != "" {
 			return auth.Credential{
 				Username:     authConfig.Username,

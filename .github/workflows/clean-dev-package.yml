@@ -10,24 +10,24 @@ jobs:
   cleanup-packages:
     runs-on: ubuntu-latest
     permissions:
-        packages: write
+      packages: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
         with:
           egress-policy: audit
 
       - name: Clean up ratify-crds-dev
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with: 
-          package-name: 'ratify-crds-dev'
-          package-type: 'container'
+        with:
+          package-name: "ratify-crds-dev"
+          package-type: "container"
           min-versions-to-keep: 7
           delete-only-pre-release-versions: "true"
       - name: Clean up ratify-dev
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with: 
-          package-name: 'ratify-dev'
-          package-type: 'container'
+        with:
+          package-name: "ratify-dev"
+          package-type: "container"
           min-versions-to-keep: 7
           delete-only-pre-release-versions: "true"

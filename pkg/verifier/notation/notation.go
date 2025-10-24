@@ -36,17 +36,23 @@ import (
 	"github.com/ratify-project/ratify/pkg/verifier/factory"
 	"github.com/ratify-project/ratify/pkg/verifier/types"
 
+	"github.com/notaryproject/notation-core-go/revocation"
+	"github.com/notaryproject/notation-core-go/revocation/purpose"
 	_ "github.com/notaryproject/notation-core-go/signature/cose" // register COSE signature
 	_ "github.com/notaryproject/notation-core-go/signature/jws"  // register JWS signature
 	"github.com/notaryproject/notation-go"
 	notationVerifier "github.com/notaryproject/notation-go/verifier"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
+	"github.com/notaryproject/notation-go/verifier/truststore"
 	oci "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const (
-	verifierType    = "notation"
-	defaultCertPath = "ratify-certs/notation/truststore"
+	verifierType                   = "notation"
+	defaultCertPath                = "ratify-certs/notation/truststore"
+	trustStoreTypeCA               = string(truststore.TypeCA)
+	trustStoreTypeSigningAuthority = string(truststore.TypeSigningAuthority)
+	trustStoreTypeTSA              = string(truststore.TypeTSA)
 )
 
 // NotationPluginVerifierConfig describes the configuration of notation verifier
@@ -56,8 +62,21 @@ type NotationPluginVerifierConfig struct { //nolint:revive // ignore linter to h
 
 	// VerificationCerts is array of directories containing certificates.
 	VerificationCerts []string `json:"verificationCerts"`
-	// VerificationCerts is map defining which keyvault certificates belong to which trust store
-	VerificationCertStores map[string][]string `json:"verificationCertStores"`
+	// VerificationCertStores defines a collection of Notary Project Trust Stores.
+	// VerificationCertStores accepts new format map[string]map[string][]string
+	// {
+	//   "ca": {
+	//     "certs": {"kv1", "kv2"},
+	//   },
+	//   "signingauthority": {
+	//     "certs": {"kv3"}
+	//   },
+	// }
+	// VerificationCertStores accepts legacy format map[string][]string as well.
+	// {
+	//   "certs": {"kv1", "kv2"},
+	// },
+	VerificationCertStores verificationCertStores `json:"verificationCertStores"`
 	// TrustPolicyDoc represents a trustpolicy.json document. Reference: https://pkg.go.dev/github.com/notaryproject/notation-go@v0.12.0-beta.1.0.20221125022016-ab113ebd2a6c/verifier/trustpolicy#Document
 	TrustPolicyDoc trustpolicy.Document `json:"trustPolicyDoc"`
 }
@@ -76,7 +95,8 @@ func init() {
 }
 
 func (f *notationPluginVerifierFactory) Create(_ string, verifierConfig config.VerifierConfig, pluginDirectory string, namespace string) (verifier.ReferenceVerifier, error) {
-	logger.GetLogger(context.Background(), logOpt).Debugf("creating notation with config %v, namespace '%v'", verifierConfig, namespace)
+	ctx := context.Background()
+	logger.GetLogger(ctx, logOpt).Debugf("creating Notation verifier with config %v, namespace '%v'", verifierConfig, namespace)
 	verifierName := fmt.Sprintf("%s", verifierConfig[types.Name])
 	verifierTypeStr := ""
 	if _, ok := verifierConfig[types.Type]; ok {
@@ -84,12 +104,11 @@ func (f *notationPluginVerifierFactory) Create(_ string, verifierConfig config.V
 	}
 	conf, err := parseVerifierConfig(verifierConfig, namespace)
 	if err != nil {
-		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.Verifier).WithPluginName(verifierName)
+		return nil, re.ErrorCodePluginInitFailure.WithDetail("Failed to create the Notation Verifier").WithError(err)
 	}
-
-	verifyService, err := getVerifierService(conf, pluginDirectory)
+	verifyService, err := getVerifierService(ctx, conf, pluginDirectory, CreateCRLHandlerFromConfig())
 	if err != nil {
-		return nil, re.ErrorCodePluginInitFailure.WithComponentType(re.Verifier).WithPluginName(verifierName).WithError(err)
+		return nil, re.ErrorCodePluginInitFailure.WithDetail("Failed to create the Notation Verifier").WithError(err)
 	}
 
 	artifactTypes := strings.Split(conf.ArtifactTypes, ",")
@@ -126,54 +145,77 @@ func (v *notationPluginVerifier) Verify(ctx context.Context,
 
 	subjectDesc, err := store.GetSubjectDescriptor(ctx, subjectReference)
 	if err != nil {
-		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeGetSubjectDescriptorFailure.NewError(re.ReferrerStore, store.Name(), re.EmptyLink, err, fmt.Sprintf("failed to resolve subject: %+v", subjectReference), re.HideStackTrace)
+		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Failed to validate the Notation signature of the artifact: %+v", subjectReference)).WithError(err)
 	}
 
 	referenceManifest, err := store.GetReferenceManifest(ctx, subjectReference, referenceDescriptor)
 	if err != nil {
-		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeGetReferenceManifestFailure.NewError(re.ReferrerStore, store.Name(), re.EmptyLink, err, fmt.Sprintf("failed to resolve reference manifest: %+v", referenceDescriptor), re.HideStackTrace)
+		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Failed to validate the Notation signature: %+v", referenceDescriptor)).WithError(err)
 	}
 
-	if len(referenceManifest.Blobs) == 0 {
-		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeSignatureNotFound.NewError(re.Verifier, v.name, re.EmptyLink, nil, fmt.Sprintf("no signature content found for referrer: %s@%s", subjectReference.Path, referenceDescriptor.Digest.String()), re.HideStackTrace)
+	if len(referenceManifest.Blobs) != 1 {
+		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Notation signature manifest requires exactly one signature envelope blob, got %d", len(referenceManifest.Blobs))).WithRemediation(fmt.Sprintf("Please inspect the artifact [%s@%s] is correctly signed by Notation signer", subjectReference.Path, referenceDescriptor.Digest.String()))
+	}
+	blobDesc := referenceManifest.Blobs[0]
+	refBlob, err := store.GetBlobContent(ctx, subjectReference, blobDesc.Digest)
+	if err != nil {
+		return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Failed to validate the Notation signature of the artifact: %+v", subjectReference)).WithError(err)
 	}
 
-	for _, blobDesc := range referenceManifest.Blobs {
-		refBlob, err := store.GetBlobContent(ctx, subjectReference, blobDesc.Digest)
-		if err != nil {
-			return verifier.VerifierResult{IsSuccess: false}, re.ErrorCodeGetBlobContentFailure.NewError(re.ReferrerStore, store.Name(), re.EmptyLink, err, fmt.Sprintf("failed to get blob content of digest: %s", blobDesc.Digest), re.HideStackTrace)
-		}
-
-		// TODO: notation verify API only accepts digested reference now.
-		// Pass in tagged reference instead once notation-go supports it.
-		subjectRef := fmt.Sprintf("%s@%s", subjectReference.Path, subjectReference.Digest.String())
-		outcome, err := v.verifySignature(ctx, subjectRef, blobDesc.MediaType, subjectDesc.Descriptor, refBlob)
-		if err != nil {
-			return verifier.VerifierResult{IsSuccess: false, Extensions: extensions}, re.ErrorCodeVerifyPluginFailure.NewError(re.Verifier, v.name, re.NotationTsgLink, err, "failed to verify signature of digest", re.HideStackTrace)
-		}
-
-		// Note: notation verifier already validates certificate chain is not empty.
-		cert := outcome.EnvelopeContent.SignerInfo.CertificateChain[0]
-		extensions["Issuer"] = cert.Issuer.String()
-		extensions["SN"] = cert.Subject.String()
+	// TODO: notation verify API only accepts digested reference now.
+	// Pass in tagged reference instead once notation-go supports it.
+	subjectRef := fmt.Sprintf("%s@%s", subjectReference.Path, subjectReference.Digest.String())
+	outcome, err := v.verifySignature(ctx, subjectRef, blobDesc.MediaType, subjectDesc.Descriptor, refBlob)
+	if err != nil {
+		return verifier.VerifierResult{IsSuccess: false, Extensions: extensions}, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Failed to validate the Notation signature: %+v", referenceDescriptor)).WithError(err)
 	}
 
-	return verifier.VerifierResult{
-		Name:       v.name,
-		Type:       v.verifierType,
-		IsSuccess:  true,
-		Message:    "signature verification success",
-		Extensions: extensions,
-	}, nil
+	// Note: notation verifier already validates certificate chain is not empty.
+	cert := outcome.EnvelopeContent.SignerInfo.CertificateChain[0]
+	extensions["Issuer"] = cert.Issuer.String()
+	extensions["SN"] = cert.Subject.String()
+
+	return verifier.NewVerifierResult("", v.name, v.verifierType, "Notation signature verification success", true, nil, extensions), nil
 }
 
-func getVerifierService(conf *NotationPluginVerifierConfig, pluginDirectory string) (notation.Verifier, error) {
-	store := &trustStore{
-		certPaths:  conf.VerificationCerts,
-		certStores: conf.VerificationCertStores,
+func getVerifierService(ctx context.Context, conf *NotationPluginVerifierConfig, pluginDirectory string, revocationFactory RevocationFactory) (notation.Verifier, error) {
+	store, err := newTrustStore(conf.VerificationCerts, conf.VerificationCertStores)
+	if err != nil {
+		return nil, err
 	}
 
-	return notationVerifier.New(&conf.TrustPolicyDoc, store, NewRatifyPluginManager(pluginDirectory))
+	// revocation check using corecrl from notation-core-go and crl from notation-go
+	// This is the implementation for revocation check from notation cli to support crl and cache configurations
+	// removed timeout
+	// Related PR: notaryproject/notation#1043
+	// Related File: https://github.com/notaryproject/notation/commits/main/cmd/notation/verify.go5
+	crlFetcher, err := revocationFactory.NewFetcher()
+	if err != nil {
+		logger.GetLogger(ctx, logOpt).Warnf("Unable to create CRL fetcher for notation verifier %s with error: %s", conf.Name, err)
+	}
+	revocationCodeSigningValidator, err := revocation.NewWithOptions(revocation.Options{
+		CRLFetcher:       crlFetcher,
+		CertChainPurpose: purpose.CodeSigning,
+	})
+	if err != nil {
+		return nil, err
+	}
+	revocationTimestampingValidator, err := revocation.NewWithOptions(revocation.Options{
+		CRLFetcher:       crlFetcher,
+		CertChainPurpose: purpose.Timestamping,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	verifier, err := notationVerifier.NewWithOptions(&conf.TrustPolicyDoc, store, NewRatifyPluginManager(pluginDirectory), notationVerifier.VerifierOptions{
+		RevocationCodeSigningValidator:  revocationCodeSigningValidator,
+		RevocationTimestampingValidator: revocationTimestampingValidator,
+	})
+	if err != nil {
+		return nil, re.ErrorCodePluginInitFailure.WithDetail("Failed to create the Notation Verifier").WithError(err)
+	}
+	return verifier, nil
 }
 
 func (v *notationPluginVerifier) verifySignature(ctx context.Context, subjectRef, mediaType string, subjectDesc oci.Descriptor, refBlob []byte) (*notation.VerificationOutcome, error) {
@@ -187,24 +229,71 @@ func (v *notationPluginVerifier) verifySignature(ctx context.Context, subjectRef
 }
 
 func parseVerifierConfig(verifierConfig config.VerifierConfig, _ string) (*NotationPluginVerifierConfig, error) {
-	verifierName := verifierConfig[types.Name].(string)
 	conf := &NotationPluginVerifierConfig{}
 
 	verifierConfigBytes, err := json.Marshal(verifierConfig)
 	if err != nil {
-		return nil, re.ErrorCodeConfigInvalid.NewError(re.Verifier, verifierName, re.EmptyLink, err, nil, re.HideStackTrace)
+		return nil, re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("Failed to parse the Notation Verifier configuration: %+v", verifierConfig)).WithError(err)
 	}
 
 	if err := json.Unmarshal(verifierConfigBytes, &conf); err != nil {
-		return nil, re.ErrorCodeConfigInvalid.NewError(re.Verifier, verifierName, re.EmptyLink, err, fmt.Sprintf("failed to unmarshal to notationPluginVerifierConfig from: %+v.", verifierConfig), re.HideStackTrace)
+		return nil, re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("Failed to parse the Notation Verifier configuration: %+v", verifierConfig)).WithError(err)
 	}
 
 	defaultCertsDir := paths.Join(homedir.Get(), ratifyconfig.ConfigFileDir, defaultCertPath)
 	conf.VerificationCerts = append(conf.VerificationCerts, defaultCertsDir)
+	if len(conf.VerificationCertStores) > 0 {
+		if err := normalizeVerificationCertsStores(conf); err != nil {
+			return nil, err
+		}
+	}
 	return conf, nil
 }
 
 // signatures should not have nested references
 func (v *notationPluginVerifier) GetNestedReferences() []string {
 	return []string{}
+}
+
+// normalizeVerificationCertsStores normalize the structure does not match the latest spec
+func normalizeVerificationCertsStores(conf *NotationPluginVerifierConfig) error {
+	isCertStoresByType, isLegacyCertStore := false, false
+	for key := range conf.VerificationCertStores {
+		if key != trustStoreTypeCA && key != trustStoreTypeSigningAuthority && key != trustStoreTypeTSA {
+			isLegacyCertStore = true
+			logger.GetLogger(context.Background(), logOpt).Debugf("Get VerificationCertStores in legacy format")
+		} else {
+			isCertStoresByType = true
+		}
+	}
+	if isCertStoresByType && isLegacyCertStore {
+		// showing configuration content in the log with error details for better user experience
+		err := re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("The verificationCertStores is misconfigured with both legacy and new formats: %+v", conf)).WithRemediation("Please provide only one format for the VerificationCertStores. Refer to the Notation Verifier configuration guide: https://ratify.dev/docs/plugins/verifier/notation#configuration")
+		logger.GetLogger(context.Background(), logOpt).Error(err)
+		return err
+	} else if !isCertStoresByType && isLegacyCertStore {
+		legacyCertStore, err := normalizeLegacyCertStore(conf)
+		if err != nil {
+			return err
+		}
+		// support legacy verfier config format for backward compatibility
+		// normalize <store>:<certs> to ca:<store><certs> if no store type is provided
+		conf.VerificationCertStores = verificationCertStores{
+			trustStoreTypeCA: legacyCertStore,
+		}
+	}
+	return nil
+}
+
+// TODO: remove this function once the refactor is done [refactore tracking issue](https://github.com/ratify-project/ratify/issues/1752)
+func normalizeLegacyCertStore(conf *NotationPluginVerifierConfig) (map[string]interface{}, error) {
+	legacyCertStoreBytes, err := json.Marshal(conf.VerificationCertStores)
+	if err != nil {
+		return nil, re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("Failed to recognize `verificationCertStores` value of Notation Verifier configuration: %+v", conf.VerificationCertStores)).WithError(err)
+	}
+	var legacyCertStore map[string]interface{}
+	if err := json.Unmarshal(legacyCertStoreBytes, &legacyCertStore); err != nil {
+		return nil, re.ErrorCodeConfigInvalid.WithDetail(fmt.Sprintf("Failed to recognize `verificationCertStores` value of Notation Verifier configuration: %+v", conf.VerificationCertStores)).WithError(err)
+	}
+	return legacyCertStore, nil
 }

@@ -143,17 +143,17 @@ func (f *cosignVerifierFactory) Create(_ string, verifierConfig config.VerifierC
 	logger.GetLogger(context.Background(), logOpt).Debugf("creating cosign verifier with config %v, namespace '%v'", verifierConfig, namespace)
 	verifierName, hasName := verifierConfig[types.Name].(string)
 	if !hasName {
-		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.Verifier).WithPluginName(verifierName).WithDetail("missing name in verifier config")
+		return nil, re.ErrorCodeConfigInvalid.WithDetail("The name field is required in the Cosign Verifier configuration")
 	}
 
 	config, err := parseVerifierConfig(verifierConfig)
 	if err != nil {
-		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.Verifier).WithPluginName(verifierName)
+		return nil, re.ErrorCodeConfigInvalid.WithDetail("Failed to create the Cosign Verifier").WithError(err)
 	}
 
 	// if key or rekorURL is provided, trustPolicies should not be provided
 	if (config.KeyRef != "" || config.RekorURL != "") && len(config.TrustPolicies) > 0 {
-		return nil, re.ErrorCodeConfigInvalid.WithComponentType(re.Verifier).WithPluginName(verifierName).WithDetail("'key' and 'rekorURL' are part of cosign legacy configuration and cannot be used with `trustPolicies`")
+		return nil, re.ErrorCodeConfigInvalid.WithDetail("'key' and 'rekorURL' are part of Cosign legacy configuration and cannot be used with `trustPolicies` parameter")
 	}
 
 	var trustPolicies *TrustPolicies
@@ -163,7 +163,7 @@ func (f *cosignVerifierFactory) Create(_ string, verifierConfig config.VerifierC
 		logger.GetLogger(context.Background(), logOpt).Debugf("legacy cosign verifier configuration not found, creating trust policies")
 		trustPolicies, err = CreateTrustPolicies(config.TrustPolicies, verifierName)
 		if err != nil {
-			return nil, err
+			return nil, re.ErrorCodePluginInitFailure.WithDetail("Failed to create the Cosign Verifier").WithError(err)
 		}
 		legacy = false
 	}
@@ -224,18 +224,18 @@ func (v *cosignVerifier) verifyInternal(ctx context.Context, subjectReference co
 	// get the reference manifest (cosign oci image)
 	referenceManifest, err := referrerStore.GetReferenceManifest(ctx, subjectReference, referenceDescriptor)
 	if err != nil {
-		return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to get reference manifest: %w", err)), nil
+		return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyPluginFailure.WithDetail(fmt.Sprintf("Failed to get Cosign signature metadata for %s", referenceDescriptor.Digest)).WithError(err)), nil
 	}
 
 	// manifest must be an OCI Image
 	if referenceManifest.MediaType != imgspec.MediaTypeImageManifest {
-		return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("reference manifest is not an image")), nil
+		return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyPluginFailure.WithDetail("The artifact metadata is not an OCI image")), nil
 	}
 
 	// get the subject image descriptor
 	subjectDesc, err := referrerStore.GetSubjectDescriptor(ctx, subjectReference)
 	if err != nil {
-		return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to create subject hash: %w", err)), nil
+		return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyReferenceFailure.WithDetail(fmt.Sprintf("Failed to validate the Cosign signature of the artifact: %+v", subjectReference)).WithError(err)), nil
 	}
 
 	// create the hash of the subject image descriptor (used as the hashed payload)
@@ -255,23 +255,23 @@ func (v *cosignVerifier) verifyInternal(ctx context.Context, subjectReference co
 		// fetch the blob content of the signature from the referrer store
 		blobBytes, err := referrerStore.GetBlobContent(ctx, subjectReference, blob.Digest)
 		if err != nil {
-			return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to get blob content: %w", err)), nil
+			return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeGetBlobContentFailure.WithDetail(fmt.Sprintf("Failed to get Cosign signature with digest %s", blob.Digest)).WithError(err)), nil
 		}
 		// convert the blob to a static signature
 		staticOpts, err := staticLayerOpts(blob)
 		if err != nil {
-			return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to parse static signature opts: %w", err)), nil
+			return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyPluginFailure.WithDetail(fmt.Sprintf("Failed to parse Cosign signature with digest %s", blob.Digest)).WithError(err)), nil
 		}
 		sig, err := static.NewSignature(blobBytes, blob.Annotations[static.SignatureAnnotationKey], staticOpts...)
 		if err != nil {
-			return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to generate static signature: %w", err)), nil
+			return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyPluginFailure.WithDetail("Failed to validate the Cosign signature").WithError(err)), nil
 		}
 		if len(keysMap) > 0 {
 			// if keys are found, perform verification with keys
 			var verifications []cosignExtension
 			verifications, hasValidSignature, err = verifyWithKeys(ctx, keysMap, sig, blob.Annotations[static.SignatureAnnotationKey], blobBytes, staticOpts, &cosignOpts, subjectDescHash)
 			if err != nil {
-				return errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("failed to verify with keys: %w", err)), nil
+				return errorToVerifyResult(v.name, v.verifierType, re.ErrorCodeVerifyPluginFailure.WithDetail("Failed to validate the Cosign signature with keys").WithError(err)), nil
 			}
 			extensionListEntry.Verifications = append(extensionListEntry.Verifications, verifications...)
 		} else {
@@ -284,16 +284,18 @@ func (v *cosignVerifier) verifyInternal(ctx context.Context, subjectReference co
 	}
 
 	if hasValidSignature {
-		return verifier.VerifierResult{
-			Name:       v.name,
-			Type:       v.verifierType,
-			IsSuccess:  true,
-			Message:    "cosign verification success. valid signatures found. please refer to extensions field for verifications performed.",
-			Extensions: Extension{SignatureExtension: sigExtensions, TrustPolicy: trustPolicy.GetName()},
-		}, nil
+		return verifier.NewVerifierResult(
+			"",
+			v.name,
+			v.verifierType,
+			"Verification success. Valid signatures found. Please refer to extensions field for verifications performed.",
+			true,
+			nil,
+			Extension{SignatureExtension: sigExtensions, TrustPolicy: trustPolicy.GetName()},
+		), nil
 	}
 
-	errorResult := errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("no valid signatures found"))
+	errorResult := errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("no valid Cosign signatures found"))
 	errorResult.Extensions = Extension{SignatureExtension: sigExtensions, TrustPolicy: trustPolicy.GetName()}
 	return errorResult, nil
 }
@@ -395,13 +397,15 @@ func (v *cosignVerifier) verifyLegacy(ctx context.Context, subjectReference comm
 	}
 
 	if len(signatures) > 0 {
-		return verifier.VerifierResult{
-			Name:       v.name,
-			Type:       v.verifierType,
-			IsSuccess:  true,
-			Message:    "cosign verification success. valid signatures found",
-			Extensions: LegacyExtension{SignatureExtension: sigExtensions},
-		}, nil
+		return verifier.NewVerifierResult(
+			"",
+			v.name,
+			v.verifierType,
+			"Verification success. Valid signatures found",
+			true,
+			nil,
+			LegacyExtension{SignatureExtension: sigExtensions},
+		), nil
 	}
 
 	errorResult := errorToVerifyResult(v.name, v.verifierType, fmt.Errorf("no valid signatures found"))
@@ -481,12 +485,16 @@ func staticLayerOpts(desc imgspec.Descriptor) ([]static.Option, error) {
 
 // ErrorToVerifyResult returns a verifier result with the error message and isSuccess set to false
 func errorToVerifyResult(name string, verifierType string, err error) verifier.VerifierResult {
-	return verifier.VerifierResult{
-		IsSuccess: false,
-		Name:      name,
-		Type:      verifierType,
-		Message:   errors.Wrap(err, "cosign verification failed").Error(),
-	}
+	verifierErr := re.ErrorCodeVerifyReferenceFailure.WithDetail("Failed to validate the Cosign signature").WithError(err)
+	return verifier.NewVerifierResult(
+		"",
+		name,
+		verifierType,
+		"",
+		false,
+		&verifierErr,
+		nil,
+	)
 }
 
 // decodeASN1Signature decodes the ASN.1 signature to raw signature bytes
@@ -532,14 +540,14 @@ func verifyWithKeys(ctx context.Context, keysMap map[PKKey]keymanagementprovider
 		if pubKey.ProviderType == azurekeyvault.ProviderName {
 			hashType, sig, err = processAKVSignature(sigEncoded, sig, pubKey.Key, payload, staticOpts)
 			if err != nil {
-				return verifications, false, fmt.Errorf("failed to process AKV signature: %w", err)
+				return verifications, false, re.ErrorCodeVerifyPluginFailure.WithDetail("Failed to validate the Cosign signature generated by Azure Key Vault").WithError(err)
 			}
 		}
 
 		// return the correct verifier based on public key type and bytes
 		verifier, err := signature.LoadVerifier(pubKey.Key, hashType)
 		if err != nil {
-			return verifications, false, fmt.Errorf("failed to load public key from provider [%s] name [%s] version [%s]: %w", mapKey.Provider, mapKey.Name, mapKey.Version, err)
+			return verifications, false, re.ErrorCodeVerifyPluginFailure.WithDetail(fmt.Sprintf("Failed to load public key from provider [%s] name [%s] version [%s]", mapKey.Provider, mapKey.Name, mapKey.Version)).WithError(err)
 		}
 		cosignOpts.SigVerifier = verifier
 		// verify signature with cosign options + perform bundle verification
@@ -619,17 +627,17 @@ func processAKVSignature(sigEncoded string, staticSig oci.Signature, publicKey c
 		// EC verifiers in cosign have built in ASN.1 decoding, but RSA verifiers do not
 		base64DecodedBytes, err := base64.StdEncoding.DecodeString(sigEncoded)
 		if err != nil {
-			return crypto.SHA256, nil, fmt.Errorf("RSA key check: failed to decode base64 signature: %w", err)
+			return crypto.SHA256, nil, re.ErrorCodeVerifyPluginFailure.WithDetail("RSA key check: failed to decode base64 signature").WithError(err)
 		}
 		// decode ASN.1 signature to raw signature if it is ASN.1 encoded
 		decodedSigBytes, err := decodeASN1Signature(base64DecodedBytes)
 		if err != nil {
-			return crypto.SHA256, nil, fmt.Errorf("RSA key check: failed to decode ASN.1 signature: %w", err)
+			return crypto.SHA256, nil, re.ErrorCodeVerifyPluginFailure.WithDetail("RSA key check: failed to decode ASN.1 signature").WithError(err)
 		}
 		encodedBase64SigBytes := base64.StdEncoding.EncodeToString(decodedSigBytes)
 		staticSig, err = static.NewSignature(payloadBytes, encodedBase64SigBytes, staticOpts...)
 		if err != nil {
-			return crypto.SHA256, nil, fmt.Errorf("RSA key check: failed to generate static signature: %w", err)
+			return crypto.SHA256, nil, re.ErrorCodeVerifyPluginFailure.WithDetail("RSA key check: failed to generate static signature").WithError(err)
 		}
 	case *ecdsa.PublicKey:
 		switch keyType.Curve {
@@ -640,10 +648,10 @@ func processAKVSignature(sigEncoded string, staticSig oci.Signature, publicKey c
 		case elliptic.P521():
 			hashType = crypto.SHA512
 		default:
-			return crypto.SHA256, nil, fmt.Errorf("ECDSA key check: unsupported key curve: %s", keyType.Params().Name)
+			return crypto.SHA256, nil, fmt.Errorf("ECDSA key check: unsupported key curve [%s]", keyType.Params().Name)
 		}
 	default:
-		return crypto.SHA256, nil, fmt.Errorf("unsupported public key type: %T", publicKey)
+		return crypto.SHA256, nil, fmt.Errorf("unsupported public key type [%T]", publicKey)
 	}
 	return hashType, staticSig, nil
 }

@@ -13,8 +13,8 @@
 
 # See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/go/.devcontainer/base.Dockerfile
 
-# [Choice] Go version (use -bullseye variants on local arm64/Apple Silicon): 1.21-bullseye, 1, 1.19, 1.18, 1-bullseye, 1.19-bullseye, 1.18-bullseye, 1-buster, 1.19-buster, 1.18-buster
-FROM mcr.microsoft.com/vscode/devcontainers/go:1.21-bullseye@sha256:0ea3913135923a684b37f9e75a1e9adbb14551199244656b77f516c4c0c6d5bc
+# [Choice] Go version (use -bullseye variants on local arm64/Apple Silicon): 1.22-bullseye, 1.21-bullseye, 1, 1.19, 1.18, 1-bullseye, 1.19-bullseye, 1.18-bullseye, 1-buster, 1.19-buster, 1.18-buster
+FROM mcr.microsoft.com/vscode/devcontainers/go:1.22-bullseye@sha256:f2d2a2bf200bb2de430a9eb4115fa87ae5d665a39539a2d5dee868227f786531
 
 # [Choice] Node.js version: none, lts/*, 18, 16, 14
 ARG NODE_VERSION="none"
@@ -30,7 +30,7 @@ RUN curl -Lo bats.tar.gz https://github.com/bats-core/bats-core/archive/v${BATS_
   && bash ./bats-core-${BATS_VERSION}/install.sh /usr/local \
   && rm -rf bats.tar.gz ./bats-core-${BATS_VERSION}
 
-ARG NOTATION_VERSION="1.0.0-rc.1"
+ARG NOTATION_VERSION="1.2.0"
 RUN curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v${NOTATION_VERSION}/notation_${NOTATION_VERSION}_linux_amd64.tar.gz \
   && tar -zxf notation.tar.gz \
   && mv ./notation /usr/local/bin/notation \
